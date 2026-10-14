@@ -33,6 +33,9 @@ https://github.com/user-attachments/assets/a5610874-e611-41bb-be22-7d99f0d64b62
 - **不动你的文件**：扫描只读，文件留在原处；改名、移动由你手动发起，先看预览，做完可以撤回。
 - **网盘和本地一起看**：115、PikPak 用 CloudDrive2 挂载成本地磁盘后，和硬盘里的片子进同一个馆藏。
 - **挂载状态**：定期检查媒体目录；读取失败会复查，确认后在托盘和作品页说明来源及原因。扫描跳过 NAS 回收站与系统目录。
+- **播放墙挑片**：拖动全屏封面墙浏览，点开作品就在墙内播放；同一番号的版本和分卷可以直接切换。
+- **收藏与保存筛选**：收藏常看的艺人、厂牌、系列和标签，也能给一组筛选起名字，下次直接打开。
+- **跨站关注与追新作**：把同一创作者在多个站点的更新汇到一起；按女优名订阅新作，尚未入库也能追。
 - **数据留在自己电脑上**：观看记录、收藏和设置都存在本机；补资料时只向来源站点发送番号或女优名；用云下载时，磁力只交给你选的网盘。
 - **公司资料**：厂牌和事务所可显示公司名称、成立日期、品牌启动日期、所在地及运营归属；只显示有来源的资料。
 - **可直达的详情与设置**：资产用 `/assets/:id`，作品用 `/works/:code`，关注条目用 `/posts/:id`；实体资料用稳定 ID，设置分区从 `/settings` 进入。地址清单见[页面路由](docs/ROUTES.md)。
@@ -41,24 +44,31 @@ https://github.com/user-attachments/assets/a5610874-e611-41bb-be22-7d99f0d64b62
 
 不想先装？[在线演示](https://demo.peach.video) 里是一份现成的馆藏，搜索、女优页、筛选和统计都能直接点；演示站只读，操作不会保存。
 
-<table>
-  <tr>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-home.jpg" alt="首页"></td>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-performer.jpg" alt="女优页"></td>
-  </tr>
-  <tr>
-    <td align="center">首页：按来源、时长、标签筛选</td>
-    <td align="center">女优页：资料、别名、外部链接和全部作品</td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-follow.jpg" alt="关注"></td>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-stats.jpg" alt="统计"></td>
-  </tr>
-  <tr>
-    <td align="center">关注：一个创作者在多个站点的更新汇到一起</td>
-    <td align="center">统计：片子存在哪、看了多少</td>
-  </tr>
-</table>
+下面的截图均为 3840×2160 无损图，点击查看 PNG 原图；播放墙也能在演示站体验。
+
+**首页：按来源、时长、标签筛选**
+
+<a href="https://peach.video/assets/screenshots/home-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/home-20261014.webp" alt="首页：人物和厂牌导航、筛选与作品卡片" width="1200"></a>
+
+**播放墙：拖动挑片，原位播放，切换版本和分卷。**
+
+<a href="https://peach.video/assets/screenshots/wall-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/wall-20261014.webp" alt="播放墙：全屏作品封面与浏览控件" width="1200"></a>
+
+**我的收藏：人物、厂牌、系列、标签和保存的筛选集中打开。**
+
+<a href="https://peach.video/assets/screenshots/favorites-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/favorites-20261014.webp" alt="我的收藏：分类导航与收藏条目" width="1200"></a>
+
+**女优页：资料、别名、外部链接和全部作品**
+
+<a href="https://peach.video/assets/screenshots/profile-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/profile-20261014.webp" alt="艺人资料页：人像、资料与全部作品" width="1200"></a>
+
+**关注：一个创作者在多个站点的更新汇到一起**
+
+<a href="https://peach.video/assets/screenshots/follow-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/follow-20261014.webp" alt="关注：创作者导航、筛选和图片更新" width="1200"></a>
+
+**统计：片子存在哪、看了多少**
+
+<a href="https://peach.video/assets/screenshots/stats-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/stats-20261014.webp" alt="统计：馆藏读数、存储与内容分布" width="1200"></a>
 
 ## 能做什么
 

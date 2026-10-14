@@ -33,6 +33,9 @@ https://github.com/user-attachments/assets/a5610874-e611-41bb-be22-7d99f0d64b62
 - **Your files stay put**: scanning is read-only and files stay where they are. Renaming or moving only happens when you start it, with a preview first and an undo afterwards.
 - **Cloud and local together**: once 115 or PikPak is mounted as a local drive with CloudDrive2, its videos join the same library as your hard drives.
 - **Mount status**: media directories are checked periodically. A failed read is checked again before the tray and video page show the affected source and reason. Scans skip NAS recycle bins and system folders.
+- **Pick from the video wall**: drag through a full-screen cover wall, expand a work and play in place, with versions and parts available directly.
+- **Favorites and saved filters**: favorite performers, studios, series and tags, or name a filter combination to open it again later.
+- **Cross-site following and new releases**: bring a creator's updates from multiple sites into one feed. Subscribe by performer name, including performers outside your library.
 - **Your data stays on your computer**: watch history, favorites and settings are stored locally. When filling in details, Peach only sends the video code or performer name to source sites. With cloud download, a magnet link goes only to the cloud drive you pick.
 - **Company profiles**: studio and agency pages can show company names, foundation dates, brand launch dates, locations and operating relationships when sourced information is available.
 - **Direct links**: assets use `/assets/:id`, works use `/works/:code` and followed posts use `/posts/:id`. Entity profiles use stable IDs; settings sections live under `/settings`. See the [page routes](docs/ROUTES.md).
@@ -41,24 +44,31 @@ https://github.com/user-attachments/assets/a5610874-e611-41bb-be22-7d99f0d64b62
 
 Want to look around before installing? The [live demo](https://demo.peach.video) is a ready-made library where you can try search, performer pages, filters and stats. The demo is read-only, so nothing you do is saved.
 
-<table>
-  <tr>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-home.jpg" alt="Home"></td>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-performer.jpg" alt="Performer page"></td>
-  </tr>
-  <tr>
-    <td align="center">Home: filter by source, length and tags</td>
-    <td align="center">Performer page: profile, aliases, links and every video</td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-follow.jpg" alt="Following"></td>
-    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-stats.jpg" alt="Statistics"></td>
-  </tr>
-  <tr>
-    <td align="center">Following: one creator's updates from several sites in one feed</td>
-    <td align="center">Statistics: where your videos live and how much you have watched</td>
-  </tr>
-</table>
+These lossless screenshots are 3840×2160; click to view the original PNG. You can also try the video wall in the demo.
+
+**Home: filter by source, length and tags**
+
+<a href="https://peach.video/assets/screenshots/home-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/home-20261014.webp" alt="Home: performer and studio navigation, filters and work cards" width="1200"></a>
+
+**Video wall: drag to explore, play in place, switch versions and parts.**
+
+<a href="https://peach.video/assets/screenshots/wall-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/wall-20261014.webp" alt="Video wall: full-screen covers and browsing controls" width="1200"></a>
+
+**My Favorites: people, studios, series, tags and saved filters in one place.**
+
+<a href="https://peach.video/assets/screenshots/favorites-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/favorites-20261014.webp" alt="My Favorites: category navigation and saved entries" width="1200"></a>
+
+**Performer page: profile, aliases, links and every video**
+
+<a href="https://peach.video/assets/screenshots/profile-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/profile-20261014.webp" alt="Performer profile: portrait, details and works" width="1200"></a>
+
+**Following: one creator's updates from several sites in one feed**
+
+<a href="https://peach.video/assets/screenshots/follow-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/follow-20261014.webp" alt="Following: creator navigation, filters and image updates" width="1200"></a>
+
+**Statistics: where your videos live and how much you have watched**
+
+<a href="https://peach.video/assets/screenshots/stats-20261014.png" target="_blank" rel="noopener"><img src="https://peach.video/assets/screenshots/stats-20261014.webp" alt="Statistics: library totals, storage and content distributions" width="1200"></a>
 
 ## What it does
 

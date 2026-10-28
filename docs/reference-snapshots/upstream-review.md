@@ -4,6 +4,10 @@
 
 ## amane 桥
 
+### 稳定版 v0.23.0 暂不采用
+
+2026-10-28 复核官方 [v0.23.0](https://github.com/sqzw-x/amane/releases/tag/v0.23.0)，提交 `4230de458c3197e1e17b6c5b42cc385fc6961d15`。[相对现固定提交的差集](https://github.com/sqzw-x/amane/compare/fd9294fbe5b4aa88ce1df84d534f6816ad9460d5...4230de458c3197e1e17b6c5b42cc385fc6961d15)含 16 个提交、142 个文件，爬虫只改了 `theporndb`；桥消费的 makers、prestige、faleno、dahlia、mgstage、fc2club、freejavbt、airav、avsox 站点类和 `amane.net` 都没有变化，其余是 CLI、服务端与图片代理。继续固定 v0.22.1；桥接站点或网络接口出现修复时再升级。
+
 ### 稳定版 v0.22.1 的桥接范围
 
 2026-10-26 静态复核官方 [v0.22.1](https://github.com/sqzw-x/amane/releases/tag/v0.22.1)，固定提交 `fd9294fbe5b4aa88ce1df84d534f6816ad9460d5`。[相对固定基线的差集](https://github.com/sqzw-x/amane/compare/cc42cee6ecf290cf05af1caa347d2dc2d5aeffcd...fd9294fbe5b4aa88ce1df84d534f6816ad9460d5)含 55 个提交。按桥直接消费的模型、站点、检索身份与网络接口判断采用范围；上游 main 的未发布提交不作为稳定发行依赖。

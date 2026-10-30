@@ -29,7 +29,7 @@ import { GlowSettings } from './glow-settings';
 import { Icon, RemixIcon } from './icon';
 import { IconSwitch, SelectField } from './legacy-controls';
 import { NumberSetting } from './number-setting';
-import type { Choice, PanelSettings, SettingsEffect, SettingsPanelApi, SettingsPanelHost } from './settings-panel-api';
+import type { Choice, PanelSettings, SettingsPanelApi, SettingsPanelHost } from './settings-panel-api';
 import { refreshPanelData, useSaveSettings } from './settings-data';
 import { SidebarOrder } from './sidebar-order';
 import { SettingsDialogClose } from '../components/settings-dialog-close';

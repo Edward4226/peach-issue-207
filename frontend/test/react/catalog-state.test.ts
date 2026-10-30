@@ -5,7 +5,7 @@ import {
   preferredThumb, resetCatalogFilters, resolveSort,
 } from '../../src/react/catalog-grid/catalog-state';
 
-const preferences = { defaultSort: 'new', defaultSortDirection: 'asc' };
+const preferences = { defaultSort: 'new', defaultSortDirection: 'asc', thumbPreviewOnly: false };
 const seed = () => 'fresh-seed';
 const initial = (pathname = '/', search = '', prefs = preferences) =>
   initialCatalogFilters({ pathname, search }, prefs, seed);

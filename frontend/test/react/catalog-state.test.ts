@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   defaultCatalogLoc, homeCatalogState, homePath, initialCatalogFilters, onlineDefaultLoc,
-  resetCatalogFilters, resolveSort,
+  preferredThumb, resetCatalogFilters, resolveSort,
 } from '../../src/react/catalog-grid/catalog-state';
 
 const preferences = { defaultSort: 'new', defaultSortDirection: 'asc' };
 const seed = () => 'fresh-seed';
-const initial = (pathname = '/', search = '') => initialCatalogFilters({ pathname, search }, preferences, seed);
+const initial = (pathname = '/', search = '', prefs = preferences) =>
+  initialCatalogFilters({ pathname, search }, prefs, seed);
 
 describe('目录地址与默认范围', () => {
   it('发行年份多选随分享地址恢复，重置清除年份', () => {
@@ -58,6 +59,26 @@ describe('目录地址与默认范围', () => {
     expect(defaultCatalogLoc('local,115', '?loc=', { '115': false })).toBe('local,115');
     expect(defaultCatalogLoc('', '?loc=', { '115': false })).toBe('');
     expect(defaultCatalogLoc('local,115', '?q=test', { '115': false })).toBe('local');
+  });
+
+  it('地址显式 thumb 优先于「仅显示有预览」偏好，没有时按偏好取开关', () => {
+    const on = { ...preferences, thumbPreviewOnly: true };
+    expect(preferredThumb('0', on)).toBe('0');
+    expect(preferredThumb('1', { ...preferences, thumbPreviewOnly: false })).toBe('1');
+    expect(preferredThumb(null, on)).toBe('1');
+    expect(preferredThumb(null, { ...preferences, thumbPreviewOnly: false })).toBe('0');
+    expect(initial('/', '?thumb=0', on).thumb).toBe('0');
+    expect(initial('/', '?thumb=1', { ...preferences, thumbPreviewOnly: false }).thumb).toBe('1');
+  });
+
+  it('没有地址参数时 startup 与 reset 沿用「仅显示有预览」偏好', () => {
+    const on = { ...preferences, thumbPreviewOnly: true };
+    const opened = initial('/', '', on);
+    expect(opened.thumb).toBe('1');
+    expect(resetCatalogFilters(opened, on, seed).thumb).toBe('1');
+    const openedOff = initial('/', '', { ...preferences, thumbPreviewOnly: false });
+    expect(openedOff.thumb).toBe('0');
+    expect(resetCatalogFilters(openedOff, { ...preferences, thumbPreviewOnly: false }, seed).thumb).toBe('0');
   });
 
   it('重置保留来源并更新种子，首页筛选条与目录状态共用对象', () => {

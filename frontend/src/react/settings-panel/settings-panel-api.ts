@@ -22,6 +22,7 @@ export interface PanelSettings {
   defaultSort: string;
   defaultSortDirection: string;
   groupCollapse: boolean;
+  thumbPreviewOnly: boolean;
   javImage: string;
   feedAutoScroll: boolean;
   feedLimit: number;
@@ -47,7 +48,7 @@ export type SettingsEffect =
   /** 光晕的开关、颜色、恢复默认与松手：侧栏那一层、其余玻璃面和侧栏配色钮一起对齐。 */
   | 'glow'
   | 'batchSize' | 'defaultSort' | 'sortDirection' | 'hoverDelay' | 'seekSeconds'
-  | 'groupCollapse' | 'feedAutoScroll' | 'feedLimit' | 'feedCompilations' | 'miniplayer' | 'javImage'
+  | 'groupCollapse' | 'thumbPreviewOnly' | 'feedAutoScroll' | 'feedLimit' | 'feedCompilations' | 'miniplayer' | 'javImage'
   | 'searchHistoryLimit';
 
 /** `[值, 显示名, 字形]`，与壳里各张选项表同形。 */

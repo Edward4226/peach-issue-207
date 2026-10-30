@@ -21,6 +21,7 @@ describe('启动归一化', () => {
       /* JAV 版式与艺人索引默认大图；照片墙一套几十张，先看全貌所以是小图。 */
       homeLayout: 'small', javLayout: 'big', peopleLayout: 'big', photoSize: 'small',
       ambientMode: true, miniplayer: true, theaterMode: false, theme: 'system', groupCollapse: true,
+      thumbPreviewOnly: false,
     });
   });
 
@@ -35,6 +36,14 @@ describe('启动归一化', () => {
       feedLimit: 12, theme: 'system', followInitialDays: 30, accent: 'teal', homeLayout: 'big', ambientMode: true,
       theaterMode: false, miniplayer: false, feedHideSoloCompilations: false,
     });
+  });
+
+  it('「仅显示有预览」只认真正的布尔值，别的存量回到关闭', () => {
+    expect(normalizeAppSettings({}).settings.thumbPreviewOnly).toBe(false);
+    expect(normalizeAppSettings({ thumbPreviewOnly: true }).settings.thumbPreviewOnly).toBe(true);
+    expect(normalizeAppSettings({ thumbPreviewOnly: false }).settings.thumbPreviewOnly).toBe(false);
+    expect(normalizeAppSettings({ thumbPreviewOnly: 'true' }).settings.thumbPreviewOnly).toBe(false);
+    expect(normalizeAppSettings({ thumbPreviewOnly: 1 }).settings.thumbPreviewOnly).toBe(false);
   });
 
   it('界面上已经不存在的键不留在对象上', () => {

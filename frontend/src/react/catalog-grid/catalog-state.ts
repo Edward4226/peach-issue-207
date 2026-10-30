@@ -6,6 +6,7 @@ import { defaultSortDir, preferredDirection, sortFromAddress } from '../../sort-
 export interface CatalogPreferences {
   defaultSort: string;
   defaultSortDirection?: string;
+  thumbPreviewOnly?: boolean;
 }
 
 export interface CatalogAddress { pathname: string; search: string }
@@ -30,6 +31,11 @@ export function resolveSort(rawSort: string | null, rawDir: string | null,
   return sortFromAddress(rawSort, rawDir, preferences.defaultSort, preferences.defaultSortDirection, fallback);
 }
 
+/** 地址写了 `thumb` 就照地址；没有时按这台浏览器的「仅显示有预览」偏好取 `'1'`/`'0'`。 */
+export function preferredThumb(raw: string | null, preferences: CatalogPreferences): string {
+  return raw || (preferences.thumbPreviewOnly ? '1' : '0');
+}
+
 /** 启动时只在目录地址读目录参数；来源范围同时适用于其它页面。 */
 export function initialCatalogFilters(address: CatalogAddress, preferences: CatalogPreferences,
   seed: () => string): CatalogState {
@@ -44,7 +50,7 @@ export function initialCatalogFilters(address: CatalogAddress, preferences: Cata
     dur_min: read('dur_min') || '', dur_max: read('dur_max') || '', orient: read('orient') || '',
     region: read('region') || '', year: read('year') || '', state: ROUTE_STATES[pathname] || read('state') || '',
     ...resolveSort(read('sort'), read('dir'), preferences), seed: read('seed') || seed(),
-    q: read('q') || '', jav: read('jav') || '', thumb: read('thumb') || '0',
+    q: read('q') || '', jav: read('jav') || '', thumb: preferredThumb(read('thumb'), preferences),
     browse: read('browse') === 'folders' || read('folder') ? 'folders' : '',
     folder: read('folder') || '', folder_recursive: read('folder_recursive') === '0' ? '0' : '',
   };
@@ -81,7 +87,7 @@ export function resetCatalogFilters(previous: Readonly<CatalogFilters>, preferen
     len: '', dur_min: '', dur_max: '', orient: '', region: '', year: '', state: '',
     sort: preferences.defaultSort,
     dir: preferredDirection(preferences.defaultSort, preferences.defaultSort, preferences.defaultSortDirection),
-    seed: seed(), q: '', jav: '', thumb: '0',
+    seed: seed(), q: '', jav: '', thumb: preferredThumb(null, preferences),
     browse: '', folder: '', folder_recursive: '',
   };
 }

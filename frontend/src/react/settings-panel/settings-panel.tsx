@@ -29,7 +29,7 @@ import { GlowSettings } from './glow-settings';
 import { Icon, RemixIcon } from './icon';
 import { IconSwitch, SelectField } from './legacy-controls';
 import { NumberSetting } from './number-setting';
-import type { Choice, PanelSettings, SettingsPanelApi, SettingsPanelHost } from './settings-panel-api';
+import type { Choice, PanelSettings, SettingsEffect, SettingsPanelApi, SettingsPanelHost } from './settings-panel-api';
 import { refreshPanelData, useSaveSettings } from './settings-data';
 import { SidebarOrder } from './sidebar-order';
 import { SettingsDialogClose } from '../components/settings-dialog-close';
@@ -376,6 +376,12 @@ function SettingsPanel({ host: current, view: shown }: { host: SettingsPanelHost
             <Row title="口味与记录"><div className="peach-react"><ButtonLink variant="secondary" href="/taste" onClick={() => close(false)}>打开口味与记录</ButtonLink></div></Row>
           </Group>
           <Group index={4} tab={shown.tab}>
+            <ToggleRow id="thumbPreviewOnlySetting" title="仅显示有预览"
+              description="隐藏没有卡片图片的作品；可从本设置关闭。" checked={settings.thumbPreviewOnly}
+              onToggle={(on) => {
+                settings.thumbPreviewOnly = on; save();
+                current.changed('thumbPreviewOnly');
+              }} />
             <ToggleRow id="censorSetting" title="SFW 模式" describedBy="sfwDescription" checked={current.censored()}
               description="隐藏敏感画面，停止悬停预览。"
               onToggle={(on) => current.setCensored(on)} />

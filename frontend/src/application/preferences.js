@@ -163,6 +163,13 @@ preferencesState.settingsEffects = {
   glowFrame:()=>applyHomeGlow(),
   glow:()=>{applyHomeGlow();applyGlassFaces()},
   batchSize:()=>{if(location.pathname==='/')loadCatalog()},
+  /* 当场改内存里的 `thumb` 再重取当前目录；地址显式写了 `thumb` 时按地址，不动这一条。 */
+  thumbPreviewOnly:()=>{
+    if(!isCatalogPath(decodeURIComponent(location.pathname))||new URLSearchParams(location.search).has('thumb'))return;
+    state.thumb=preferencesState.appSettings.thumbPreviewOnly?'1':'0';
+    notifyShell();
+    loadCatalog();
+  },
   defaultSort:()=>{
     state.sort=preferencesState.appSettings.defaultSort;
     state.dir=preferredDirection(state.sort,preferencesState.appSettings.defaultSort,preferencesState.appSettings.defaultSortDirection);

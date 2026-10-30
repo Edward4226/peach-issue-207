@@ -112,6 +112,7 @@ const settings = (): PanelSettings => ({
   javImage: 'cover', feedAutoScroll: true, feedLimit: 12, feedHideGroupCompilations: true, feedHideSoloCompilations: false,
   feedHideExcerpts: true, hoverDelaySeconds: 5, detailAutoplay: false, miniplayer: true, seekSeconds: 10,
   relatedLimit: 24, searchHistoryLimit: 10, followInitialDays: 30, avatarRefreshDays: 90, faviconRefreshDays: 365,
+  thumbPreviewOnly: false,
 });
 
 /** 壳 `settingsHost()` 交进来的那一份。 */
@@ -228,6 +229,22 @@ describe('设置面板与壳的接缝', () => {
     current.changed.mockClear();
     await click(panel.querySelector('#themeSetting input[value="dark"]'));
     expect([current.value.theme, effects(current.changed)]).toEqual(['dark', ['theme']]);
+    await close(current);
+  });
+
+  it('「仅显示有预览」在内容显示里：落盘一次、报 thumbPreviewOnly', async () => {
+    const current = await setup();
+    const panel = await open(current, '内容显示');
+    const toggle = panel.querySelector<HTMLInputElement>('#thumbPreviewOnlySetting')!;
+    expect(toggle.closest('[data-setting-group]')?.id).toBe('settings-group-4');
+    expect(toggle.checked).toBe(false);
+    current.changed.mockClear();
+    current.save.mockClear();
+    await click(toggle);
+    expect([
+      current.value.thumbPreviewOnly,
+      current.save.mock.calls.length, effects(current.changed),
+    ]).toEqual([true, 1, ['thumbPreviewOnly']]);
     await close(current);
   });
 

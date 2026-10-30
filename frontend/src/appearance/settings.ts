@@ -47,6 +47,7 @@ export interface AppSettings {
   theaterMode: boolean;
   theme: string;
   groupCollapse: boolean;
+  thumbPreviewOnly: boolean;
   detailAutoplay: boolean;
   uiSounds: boolean;
   feedAutoScroll: boolean;
@@ -63,7 +64,7 @@ export const DEFAULT_SETTINGS = {
   batchSize: 60, defaultSort: 'seed', sortDefaultsVersion: 3, hoverDelaySeconds: 5, seekSeconds: 10,
   searchHistoryLimit: 10, relatedLimit: 20, feedLimit: 12, javLayout: 'big', homeLayout: 'small', javImage: 'cover',
   followLayout: 'default', peopleLayout: 'big', photoSize: 'small', ambientMode: true, miniplayer: true,
-  theaterMode: false, theme: 'system', groupCollapse: true, sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
+  theaterMode: false, theme: 'system', groupCollapse: true, thumbPreviewOnly: false, sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
   homeGlow: DEFAULT_HOME_GLOW, accent: DEFAULT_ACCENT,
 } as const;
 
@@ -95,6 +96,7 @@ export function normalizeAppSettings(raw: unknown): { settings: AppSettings; mig
   settings.ambientMode = settings.ambientMode !== false;
   settings.theaterMode = settings.theaterMode === true;
   settings.groupCollapse = settings.groupCollapse !== false;
+  settings.thumbPreviewOnly = settings.thumbPreviewOnly === true;
   settings.detailAutoplay = settings.detailAutoplay !== false;
   settings.miniplayer = settings.miniplayer !== false;
   settings.uiSounds = settings.uiSounds !== false;

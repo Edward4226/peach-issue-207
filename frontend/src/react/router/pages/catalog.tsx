@@ -29,6 +29,7 @@ import { pageOpens, state, subscribeShell, writeShell, type CatalogFilters } fro
 
 import { junkPath, junkRoute } from '../../../junk-queue';
 import { sortFromAddress } from '../../../sort-preferences';
+import { preferredThumb } from '../../catalog-grid/catalog-state';
 import { ShellActionsContext, useOpenEpoch } from '../router';
 import type { CatalogShell, ShellActions } from '../shell-actions';
 import { entityTarget } from './index-entity';
@@ -75,12 +76,13 @@ function seen(opened: boolean): Seen {
   };
 }
 
-/** 按地址重建的目录筛选，同壳启动时那一份的写法；回收站只钉死状态、清掉别的筛选。产地与缩略图不随地址重读。 */
+/** 按地址重建的目录筛选，同壳启动时那一份的写法；回收站只钉死状态、清掉别的筛选。产地不随地址重读，缩略图按地址或偏好。 */
 function filtersAt(pathname: string, search: string, entering: boolean, shell: CatalogShell): CatalogFilters {
   const previous: CatalogFilters = { ...state };
   if (pathname === '/trash') return { ...previous, creator: '', studio: '', tag: '', orient: '', state: 'trash', q: '' };
   const params = new URLSearchParams(search);
-  const { defaultSort, defaultSortDirection } = appSettingsStore().value;
+  const preferences = appSettingsStore().value;
+  const { defaultSort, defaultSortDirection } = preferences;
   return {
     ...previous,
     loc: params.get('loc') ?? shell.defaultLoc(),
@@ -93,6 +95,7 @@ function filtersAt(pathname: string, search: string, entering: boolean, shell: C
     ...sortFromAddress(params.get('sort'), params.get('dir'), defaultSort, defaultSortDirection),
     seed: params.get('seed') || (entering ? newSeed() : previous.seed || newSeed()),
     q: params.get('q') || '', jav: params.get('jav') || '',
+    thumb: preferredThumb(params.get('thumb'), preferences),
     performer: params.get('performer') || '', series: params.get('series') || '',
     browse: params.get('browse') === 'folders' || params.get('folder') ? 'folders' : '',
     folder: params.get('folder') || '', folder_recursive: params.get('folder_recursive') === '0' ? '0' : '',

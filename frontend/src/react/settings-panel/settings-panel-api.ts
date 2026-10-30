@@ -24,6 +24,7 @@ export interface PanelSettings {
   defaultVolume: number;
   groupCollapse: boolean;
   javImage: string;
+  performerNameLanguage: 'zh-CN' | 'ja';
   feedAutoScroll: boolean;
   feedLimit: number;
   feedHideGroupCompilations: boolean;
@@ -49,7 +50,7 @@ export type SettingsEffect =
   | 'glow'
   | 'batchSize' | 'defaultSort' | 'sortDirection' | 'hoverDelay' | 'seekSeconds'
   | 'groupCollapse' | 'feedAutoScroll' | 'feedLimit' | 'feedCompilations' | 'miniplayer' | 'javImage'
-  | 'searchHistoryLimit';
+  | 'searchHistoryLimit' | 'performerNameLanguage';
 
 /** `[值, 显示名, 字形]`，与壳里各张选项表同形。 */
 export type Choice = readonly [value: string, label: string, icon?: string];

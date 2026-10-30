@@ -16,7 +16,7 @@ import {
 import { disposePlayer } from './dispose';
 import { playerHost } from './host';
 import { mountImmersePlayer, type ImmersePlayerOptions } from './immerse-player';
-import { mountDetachedVolumeMemory, mountVolumeMemory } from './memory';
+import { mountDetachedVolumeMemory, mountVolumeMemory, playWhenVolumeReady } from './memory';
 import { wirePlayerContextMenu } from './menu';
 import { detailPlayer, setDetailPlayer } from './registry';
 import { playbackKey, playbackPosition, stopPlaybackPosition, trackPlaybackPosition } from './progress';
@@ -92,14 +92,13 @@ export async function mountDetailPlayer(
     const volume = mountDetachedVolumeMemory(video, options.playbackKey || playbackKey('item', item),
       host.settings().defaultVolume / 100);
     source().then((next) => {
-      if (released) return;
+      if (released || !video.isConnected) { volume.dispose(); return }
       video.addEventListener('loadedmetadata', () => {
         if (resume && resume.time > 0) video.currentTime = Math.min(resume.time, realDuration(video.duration) || resume.time);
       }, { once: true });
       video.src = next.src;
-      if (autoplay) void volume.ready
-        .then(() => mediaReady(video))
-        .then(() => video.play()).catch(() => {});
+      if (autoplay) void playWhenVolumeReady(video, volume.ready.then(() => mediaReady(video)),
+        () => video.play(), () => !released && video.isConnected).catch(() => {});
     }).catch(() => {});
     video.addEventListener('emptied', () => { released = true }, { once: true });
     video.addEventListener('emptied', volume.dispose, { once: true });
@@ -223,7 +222,7 @@ export async function mountDetailPlayer(
     if (segmentedSource && !fallbackUsed && !player.isDisposed()) {
       fallbackUsed = true; segmentedSource = false;
       player.src(directDetailSource(item));
-      if (autoplay) void volume.ready.then(() => player.play()).catch(() => {});
+      if (autoplay) void playWhenVolumeReady(video, volume.ready, () => player.play(), live).catch(() => {});
       return;
     }
     // 播到一半掉盘时 video 元素只报通用错误；来源状态才分得清脱盘和文件损坏。
@@ -259,7 +258,7 @@ export async function mountDetailPlayer(
     });
     player.src(next);
     enforceDuration(); setTimeout(enforceDuration, 0); setTimeout(enforceDuration, 250);
-    if (autoplay) void volume.ready.then(() => player.play()).catch(() => {});
+    if (autoplay) void playWhenVolumeReady(video, volume.ready, () => player.play(), live).catch(() => {});
   }).catch(() => {});
   return player;
 }

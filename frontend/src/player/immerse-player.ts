@@ -24,7 +24,7 @@ export interface ImmersePlayerOptions {
   session: string;
   /** 放完之后（沉浸模式接着放下一条）。 */
   onEnded?: () => void;
-  /** 片源已经交给 video：调用方从这一刻起等它可以出画。拆得比片源解析快时不回调。 */
+  /** 片源已经交给 video 且音量已经确定：调用方从这一刻起等它可以出画。拆得更快时不回调。 */
   onLoaded?: () => void;
 }
 
@@ -40,14 +40,14 @@ export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlay
     if (released) return;
     const direct = directStreamSource(item, session);
     const segmented = String(source.type || '').includes('mpegurl');
+    let volumeReady: Promise<void>;
     // 播放器脚本拉不到时退回原生 video；原生元素播不了分片，只能直读。
     if (!vjs) {
       const volume = mountDetachedVolumeMemory(video, playbackKey('item', item),
         playerHost().settings().defaultVolume / 100);
-      await volume.ready;
-      if (released) { volume.dispose(); return }
       video.src = (segmented ? direct : source).src;
       video.addEventListener('emptied', volume.dispose, { once: true });
+      volumeReady = volume.ready;
     }
     else {
       const mounted = vjs(video, BARE);
@@ -63,11 +63,12 @@ export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlay
       new SubtitleSession(mounted, video);
       mountPlayerSubtitles(mounted, item.id);
       if (segmented) mounted.one('error', () => { if (!released) mounted.src(direct) });
-      await volume.ready;
-      if (released || mounted.isDisposed()) return;
       mounted.src(source);
+      volumeReady = volume.ready;
     }
     wireTelemetry(item, video, options.onEnded ? { onEnded: options.onEnded } : {});
+    await volumeReady;
+    if (released || player?.isDisposed()) return;
     options.onLoaded?.();
   });
   return () => {

@@ -118,13 +118,13 @@ export interface VolumeState {
 function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume: number, disposed: () => boolean): VolumeState {
   let touched = false, restoring: number | undefined, programmatic: number | undefined, stopped = false;
   const apply = (value: number) => {
-    if (disposed() || !validVolume(value)) return;
+    if (stopped || disposed() || !validVolume(value)) return;
     programmatic = value;
     if (video.volume === value) return;
     restoring = value; video.volume = value;
   };
   const save = () => {
-    if (disposed() || !validVolume(video.volume)) return;
+    if (stopped || disposed() || !validVolume(video.volume)) return;
     void memory.save({ volume: video.volume }).catch(() => {});
   };
   const onVolumeChange = () => {
@@ -136,10 +136,26 @@ function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume
   };
   apply(validVolume(defaultVolume) ? defaultVolume : 1);
   video.addEventListener('volumechange', onVolumeChange);
-  const ready = memory.load().then(saved => {
-    const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
-    if (!touched && !changedBeforeLoad && validVolume(saved.volume)) apply(saved.volume);
-  }).catch(() => {});
+  let finishReady = () => {};
+  const ready = new Promise<void>(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    finishReady = finish;
+    /* 本地记忆接口异常时不能让播放器无限等下去；超时后保留默认音量，迟到的记录也不再覆盖。 */
+    const timer = setTimeout(finish, 4_000);
+    void memory.load().then(saved => {
+      if (!stopped && !disposed()) {
+        const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
+        if (!touched && !changedBeforeLoad && validVolume(saved.volume)) apply(saved.volume);
+      }
+      finish();
+    }, finish);
+  });
   return {
     ready,
     current: () => video.volume,
@@ -150,9 +166,26 @@ function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume
     dispose() {
       if (stopped) return;
       stopped = true;
+      finishReady();
       video.removeEventListener('volumechange', onVolumeChange);
     },
   };
+}
+
+/** 等音量确定后再启动自动播放；用户已经抢先播放或暂停时，以用户操作为准。 */
+export function playWhenVolumeReady(
+  video: HTMLVideoElement,
+  ready: Promise<void>,
+  play: () => unknown,
+  live: () => boolean = () => true,
+): Promise<void> {
+  let started = false;
+  const onPlay = () => { started = true };
+  video.addEventListener('play', onPlay);
+  return ready.then(async () => {
+    if (started || !live() || !video.paused || video.ended) return;
+    await play();
+  }).finally(() => video.removeEventListener('play', onPlay));
 }
 
 /** 音量只在用户调整时写入；恢复同一部视频的音量时不回写。

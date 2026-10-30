@@ -2,7 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubtitleSession } from '../src/player/subtitle-memory';
 import type { VjsPlayer } from '../src/player/types';
-import { mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory } from '../src/player/memory';
+import {
+  mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory, playWhenVolumeReady,
+} from '../src/player/memory';
 import { mountPlayerRotation } from '../src/player/rotation';
 import { mountCaptionStyle } from '../src/player/subtitle-style';
 
@@ -205,11 +207,11 @@ describe('单片音量记忆', () => {
     }));
     const view = mounted(), volume = mountVolumeMemory(view.player, view.video, 1);
     const started = vi.fn(() => ({ volume: view.video.volume }));
-    void volume.ready.then(started);
+    const playback = playWhenVolumeReady(view.video, volume.ready, started);
     await flush();
     expect(started).not.toHaveBeenCalled();
     loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: 0 })));
-    await volume.ready;
+    await playback;
     expect(started).toHaveBeenCalledOnce();
     expect(started.mock.results[0]!.value).toEqual({ volume: 0 });
     expect(writes).toEqual([]);
@@ -231,6 +233,32 @@ describe('单片音量记忆', () => {
     await detached.ready;
     expect(native.volume).toBe(.1);
     detached.dispose();
+  });
+
+  it('等待音量时用户先播放再暂停，迟到恢复不会重新开播', async () => {
+    let loaded!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async () => new Promise<Response>(resolve => { loaded = resolve })));
+    const view = mounted(), volume = mountVolumeMemory(view.player, view.video, 1), play = vi.fn();
+    const started = playWhenVolumeReady(view.video, volume.ready, play);
+    view.video.dispatchEvent(new Event('play'));
+    view.video.dispatchEvent(new Event('pause'));
+    await flush();
+    loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .2 })));
+    await started;
+    expect(play).not.toHaveBeenCalled();
+    expect(view.video.volume).toBe(.2);
+    view.dispose();
+  });
+
+  it('detached 音量状态释放后，迟到的记录不再改写音量', async () => {
+    let loaded!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async () => new Promise<Response>(resolve => { loaded = resolve })));
+    const native = document.createElement('video'), detached = mountDetachedVolumeMemory(native, 'item:4', .6);
+    await flush();
+    detached.dispose();
+    loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .1 })));
+    await detached.ready;
+    expect(native.volume).toBe(.6);
   });
 });
 

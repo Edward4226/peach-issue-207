@@ -45,6 +45,16 @@ export function requiredEnv(name: string): string {
   return value;
 }
 
+async function normalizePage(page: Page): Promise<Page> {
+  // Windows 的“减少透明度”会被无头 Chrome 继承，但 Playwright 的 context 选项没有
+  // 对应开关。界面用例验收项目声明的玻璃材质，因此只在这个测试页会话语义上关闭它。
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-transparency', value: 'no-preference' }],
+  });
+  return page;
+}
+
 export async function launch(): Promise<Browser> {
   const args: string[] = [];
   if (process.platform === 'win32') {
@@ -68,13 +78,23 @@ export async function launch(): Promise<Browser> {
     args.push(`--log-net-log=${join(networkLogs, filename)}`, '--net-log-capture-mode=HeavilyRedacted');
     console.info(`浏览器网络事件日志：${filename}`);
   }
-  return chromium.launch({
+  const browser = await chromium.launch({
     headless: true,
     executablePath: requiredEnv('PEACH_E2E_CHROME'),
     args,
     // Windows 首次加载浏览器与系统组件使用独立的启动预算，页面等待由各用例限定。
     timeout: 60_000,
   });
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (options) => {
+    const context = await newContext(options);
+    const newPage = context.newPage.bind(context);
+    context.newPage = async () => normalizePage(await newPage());
+    return context;
+  };
+  const newPage = browser.newPage.bind(browser);
+  browser.newPage = async (options) => normalizePage(await newPage(options));
+  return browser;
 }
 
 /** 失败时保留焦点、输入和弹层现场；成功路径不额外查询页面。 */

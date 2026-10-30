@@ -18,7 +18,14 @@ from .mp4index import composition_offsets_present
 
 
 BROWSER_NATIVE_SUFFIXES = frozenset({".mp4", ".m4v", ".webm", ".ogv", ".ogg"})
+#: 浏览器不认这些容器，但里面的流可以原样复制进 MP4：走一次整片 remux 而不是按分片重编码。
+REMUX_CONTAINER_SUFFIXES = frozenset({".ts", ".m2ts"})
 DIRECT_MP4_PIXEL_FORMATS = frozenset({"yuv420p", "yuvj420p"})
+
+#: `playback_route` 的三种结论，调用方据此选 Range／remux 缓存／HLS。
+PLAYBACK_DIRECT = "direct"
+PLAYBACK_REMUX = "remux"
+PLAYBACK_TRANSCODE = "transcode"
 TRANSCODE_TIMEOUT_SECONDS = 3600
 PROBE_TIMEOUT_SECONDS = 20
 logger = logging.getLogger(__name__)
@@ -94,14 +101,36 @@ class TranscodeService:
         key, profile = matches[-1]
         return {'status': 'cached', 'size_bytes': key[1], 'modified_ns': key[2], **asdict(profile)}
 
+    def playback_route(self, source: Path, *, session: str = "", registry=None) -> str:
+        """浏览器怎么拿到这个文件：原容器直出、一次 remux 成 MP4，还是必须重编码。
+
+        `PLAYBACK_DIRECT` 是后缀和内部编码都适合浏览器；`PLAYBACK_REMUX` 是 TS/M2TS
+        这类容器不被浏览器接受、但 H.264 8-bit 4:2:0 加 AAC 或空音频可以复制流封进
+        MP4 一次播完；`PLAYBACK_TRANSCODE` 交给 HLS 按分片重编码。探测不到编码时保守
+        判为 `PLAYBACK_TRANSCODE`，与改动前一样回退 HLS。
+        """
+        if not self.needs_transcode(source):
+            if self.resolver.ffprobe() is None:
+                return PLAYBACK_DIRECT
+            profile = self._profile_for(source, session, registry)
+            return (PLAYBACK_DIRECT if profile is not None
+                    and self._browser_compatible(source, profile) else PLAYBACK_TRANSCODE)
+
+        if source.suffix.lower() in REMUX_CONTAINER_SUFFIXES:
+            if self.resolver.ffprobe() is None:
+                return PLAYBACK_TRANSCODE
+            try:
+                profile = self._profile_for(source, session, registry)
+            except OSError:
+                return PLAYBACK_TRANSCODE
+            if profile is not None and self._remux_compatible(profile):
+                return PLAYBACK_REMUX
+        return PLAYBACK_TRANSCODE
+
     def requires_conversion(self, source: Path, *, session: str = "", registry=None) -> bool:
-        """按容器和内部编码选择浏览器兼容路径，不生成整片缓存。"""
-        if self.needs_transcode(source):
-            return True
-        if self.resolver.ffprobe() is None:
-            return False
-        profile = self._profile_for(source, session, registry)
-        return profile is None or not self._browser_compatible(source, profile)
+        """要不要走 HLS 重编码。remux 型 TS 不算：`/stream` 一次复制流成 MP4 缓存即可。"""
+        return self.playback_route(
+            source, session=session, registry=registry) == PLAYBACK_TRANSCODE
 
     def decode_order_timestamps(self, source: Path, *, session: str = "", registry=None) -> bool:
         """是不是只有时间戳错乱的那一类：有 B 帧却没有 ctts，码流本身浏览器解得出来。
@@ -233,6 +262,13 @@ class TranscodeService:
                 if stale != target:
                     stale.unlink(missing_ok=True)
             return target, True
+
+    @staticmethod
+    def _remux_compatible(profile: _MediaProfile) -> bool:
+        """流能原样装进 MP4：H.264 8-bit 4:2:0，音频是 AAC 或没有。"""
+        return (profile.video_codec == "h264"
+                and profile.pixel_format in DIRECT_MP4_PIXEL_FORMATS
+                and profile.audio_codec in {"", "aac"})
 
     @staticmethod
     def _browser_compatible(source: Path, profile: _MediaProfile) -> bool:

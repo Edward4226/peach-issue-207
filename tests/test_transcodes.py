@@ -272,6 +272,100 @@ class TranscodeServiceTests(unittest.TestCase):
             self.assertNotIn("h264_nvenc", transcodes[0])
             self.assertNotIn("libx264", transcodes[0])
 
+    def test_h264_aac_ts_is_remuxed_once_into_a_cached_mp4(self):
+        """TS 的 H.264/AAC 不必按 6 秒分片重编码：复制流封进 MP4 后按 Range 播。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "movie.ts"
+            source.write_bytes(b"ts")
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                root / "cache",
+                prefer_hardware=True,
+            )
+            commands = []
+            profile = [
+                {"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p"},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ]
+
+            with patch(
+                "peach.transcodes.subprocess.Popen",
+                side_effect=_media_process(commands, profile),
+            ):
+                self.assertFalse(service.requires_conversion(source))
+                first, transcoded = service.browser_path(9, source)
+                second, cached = service.browser_path(9, source)
+
+            self.assertTrue(transcoded and cached)
+            self.assertEqual(first, second)
+            self.assertEqual(first.suffix, ".mp4")
+            self.assertEqual(first.read_bytes(), b"mp4")
+            self.assertEqual(source.read_bytes(), b"ts")
+            transcodes = [command for command in commands if "ffprobe" not in command[0]]
+            self.assertEqual(len(transcodes), 1, "第二次请求必须命中缓存")
+            self.assertEqual(transcodes[0][transcodes[0].index("-c:v") + 1], "copy")
+            self.assertEqual(transcodes[0][transcodes[0].index("-c:a") + 1], "copy")
+            self.assertIn("+faststart", transcodes[0])
+            self.assertNotIn("libx264", transcodes[0])
+            self.assertNotIn("h264_nvenc", transcodes[0])
+
+    def test_m2ts_h264_without_audio_is_also_remuxable(self):
+        """空音频也能复制；m2ts 与 ts 同一条 remux 判据。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "movie.m2ts"
+            source.write_bytes(b"m2ts")
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                root / "cache", prefer_hardware=False,
+            )
+            commands = []
+            profile = [
+                {"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuvj420p"},
+            ]
+            with patch("peach.transcodes.subprocess.Popen",
+                       side_effect=_media_process(commands, profile)):
+                self.assertFalse(service.requires_conversion(source))
+                path, transcoded = service.browser_path(9, source)
+
+            self.assertTrue(transcoded and path.is_file())
+            command = [item for item in commands if "ffprobe" not in item[0]][0]
+            self.assertEqual(command[command.index("-c:v") + 1], "copy")
+            self.assertEqual(command[command.index("-c:a") + 1], "copy")
+
+    def test_hevc_ts_still_requires_the_hls_transcode_path(self):
+        """HEVC 不能安全复制进 MP4：保持原有 HLS 重编码决定。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "movie.ts"
+            source.write_bytes(b"ts")
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                root / "cache", prefer_hardware=False,
+            )
+            commands = []
+            profile = [
+                {"codec_type": "video", "codec_name": "hevc", "pix_fmt": "yuv420p"},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ]
+            with patch("peach.transcodes.subprocess.Popen",
+                       side_effect=_media_process(commands, profile)):
+                self.assertTrue(service.requires_conversion(source))
+
+    def test_ts_without_a_readable_probe_stays_conservative(self):
+        """探测不到编码时不猜 remux，仍旧交给 HLS。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "movie.ts"
+            source.write_bytes(b"ts")
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                root / "cache", prefer_hardware=False,
+            )
+            with patch.object(service, "_probe", return_value=None):
+                self.assertTrue(service.requires_conversion(source))
+
     def test_h264_with_incompatible_audio_copies_video_and_encodes_aac(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

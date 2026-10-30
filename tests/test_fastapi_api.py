@@ -3203,6 +3203,61 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(playlist.status_code, 200)
             self.assertIn('#EXTINF:0.280', playlist.text)
 
+    async def test_remuxable_ts_stream_plan_is_range_without_hls_segments(self):
+        """H.264/AAC 的 TS 计划直接给 Range + video/mp4，不生成 6 秒 HLS 分片。"""
+        from peach.ffmpeg import BinaryChoice
+        from peach.transcodes import _MediaProfile
+
+        source = self.media_root / "movie.ts"
+        source.write_bytes(b"ts-source")
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET path=?, duration=13.5 WHERE id=1", (str(source),))
+        con.commit()
+        con.close()
+        service = self.app.state.transcode_service
+
+        with patch.object(service.resolver, "ffprobe",
+                          return_value=BinaryChoice(Path("ffprobe"), "test")), \
+                patch.object(service, "_probe",
+                          return_value=_MediaProfile("h264", "yuv420p", "aac", duration=13.5)), \
+                patch.object(service, "browser_path",
+                             side_effect=AssertionError("remux is not a whole-file conversion")):
+            plan = (await self.client.get("/api/stream-plan?id=1&session=s&t=secret")).json()
+            playlist = await self.client.get("/stream/hls/1/index.m3u8?session=s&t=secret")
+
+        self.assertEqual(plan["protocol"], "range")
+        self.assertEqual(plan["mime_type"], "video/mp4")
+        self.assertIn("/stream?id=1", plan["src"])
+        self.assertNotIn("segments", plan)
+        self.assertEqual(playlist.status_code, 404)
+
+    async def test_hevc_ts_stream_plan_falls_back_to_six_second_hls(self):
+        """不能安全 remux 的 TS 仍按固定 6 秒分片回退 HLS。"""
+        from peach.ffmpeg import BinaryChoice
+        from peach.transcodes import _MediaProfile
+
+        source = self.media_root / "movie-hevc.ts"
+        source.write_bytes(b"ts-source")
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET path=?, duration=13.5 WHERE id=1", (str(source),))
+        con.commit()
+        con.close()
+        service = self.app.state.transcode_service
+
+        with patch.object(service.resolver, "ffprobe",
+                          return_value=BinaryChoice(Path("ffprobe"), "test")), \
+                patch.object(service, "_probe",
+                          return_value=_MediaProfile("hevc", "yuv420p", "aac", duration=13.5)):
+            plan = (await self.client.get("/api/stream-plan?id=1&session=s&t=secret")).json()
+            playlist = await self.client.get("/stream/hls/1/index.m3u8?session=s&t=secret")
+
+        self.assertEqual(plan["protocol"], "hls")
+        self.assertEqual(plan["segments"], 3)
+        self.assertIn("/stream/hls/1/index.m3u8?session=s", plan["src"])
+        self.assertEqual(playlist.status_code, 200)
+        self.assertEqual(playlist.text.count("#EXTINF:"), 3)
+        self.assertEqual(playlist.text.count("#EXTINF:6.000,"), 2)
+
     async def test_unknown_ledger_duration_still_slices_by_the_probed_duration(self):
         """账本没记时长（或记成 -1）的 HEVC MP4 也按片切：时长取 ffprobe 报的，不走整片转码。"""
         from peach.transcodes import _MediaProfile

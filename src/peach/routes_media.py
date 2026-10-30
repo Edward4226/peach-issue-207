@@ -62,7 +62,10 @@ from .streaming import (
     BufferedFileResponse, CancellableFileResponse, SplicedMp4Response, run_until_disconnect,
 )
 from .remote_media_cache import MEDIA_SECURITY_HEADERS
-from .transcodes import TranscodeCancelled, TranscodeNeedsSession, TranscodeUnavailable
+from .transcodes import (
+    PLAYBACK_REMUX, REMUX_CONTAINER_SUFFIXES,
+    TranscodeCancelled, TranscodeNeedsSession, TranscodeUnavailable,
+)
 
 router = APIRouter()
 
@@ -155,6 +158,9 @@ def _needs_conversion(state, asset_id: int, source: Path, session: str) -> bool:
 
     HLS 那两个端点不问：一次播放的分片计划要在整段会话里保持同一个形状，边车中途落地
     会让固定 6 秒的计划换成按关键帧切的，剩下的分片索引全对不上。
+
+    TS/M2TS 里能复制流封进 MP4 的片子不算转换：起播走 Range，`/stream` 首次调用
+    remux 一次到缓存。只有真正要重编码的编码组合才继续送给 HLS。
     """
     if not state.transcode_service.requires_conversion(
             source, session=session, registry=state.stream_sessions):
@@ -367,6 +373,11 @@ def stream_plan(request: Request, id: int, session: str = "", mode: str = "", ar
     if source_path.suffix.lower() in strm.DISC_SUFFIXES:
         return JSONResponse({'error': 'ISO 原盘请使用作品详情中的外部播放器打开'}, status_code=415)
     conversion = _needs_conversion(state, id, source_path, session)
+    # remux 型 TS 的响应体是缓存 MP4，MIME 不跟源容器走。
+    remux = (not conversion
+             and source_path.suffix.lower() in REMUX_CONTAINER_SUFFIXES
+             and state.transcode_service.playback_route(
+                 source_path, session=session, registry=state.stream_sessions) == PLAYBACK_REMUX)
     resolved = (_hls_plan(state, id, session, conversion)
                 if conversion or plan.protocol == "hls" else None)
     if resolved and session:
@@ -386,7 +397,7 @@ def stream_plan(request: Request, id: int, session: str = "", mode: str = "", ar
     return _record_stream_plan(state, id, source_path, {
         "id": id,
         "protocol": "range",
-        "mime_type": plan.mime_type,
+        "mime_type": "video/mp4" if remux else plan.mime_type,
         "duration": asset.duration,
         "src": source,
         "reason": plan.reason,

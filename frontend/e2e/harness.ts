@@ -139,6 +139,11 @@ export async function settle(page: Page, scope = 'body', { except = '' }: { exce
         return !!root && !waiting(root) && ![...root.querySelectorAll('[aria-busy="true"],[data-skeleton]')].some(waiting);
       },
       { selector: scope, except }, { timeout: 15_000 });
+    // 等待态撤掉、断点切换或 React 挂载后，滚动容器和绝对定位的边缘层要到下一次
+    // 布局与绘制才拿到最终宽高。调用方量的是它们，不是等待态本身，所以再多等两帧。
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
   } catch (error) {
     const pending = await page.evaluate(({ selector, except }) => {
       const root = document.querySelector(selector);

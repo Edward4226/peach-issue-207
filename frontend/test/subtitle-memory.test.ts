@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubtitleSession } from '../src/player/subtitle-memory';
 import type { VjsPlayer } from '../src/player/types';
 import {
-  mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory, playWhenVolumeReady,
+  createPlaybackIntent, mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory,
+  playWhenVolumeReady,
 } from '../src/player/memory';
 import { mountPlayerRotation } from '../src/player/rotation';
 import { mountCaptionStyle } from '../src/player/subtitle-style';
@@ -33,7 +34,7 @@ function mounted(id = 1) {
       tracks.push(track); events.dispatchEvent(new Event('addtrack')); return track;
     }, dispose: () => disposing.forEach(callback => callback()) };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() });
 
 describe('统一播放文件记忆', () => {
   const observer = () => vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -250,6 +251,37 @@ describe('单片音量记忆', () => {
     view.dispose();
   });
 
+  it('分片源回退直读时，重建的自动播放等待仍记得用户先播放再暂停', async () => {
+    let loaded!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async () => new Promise<Response>(resolve => { loaded = resolve })));
+    const view = mounted(), volume = mountVolumeMemory(view.player, view.video, 1), play = vi.fn();
+    const intent = createPlaybackIntent();
+    const primary = playWhenVolumeReady(view.video, volume.ready, play, () => true, intent);
+    view.video.dispatchEvent(new Event('play'));
+    view.video.dispatchEvent(new Event('pause'));
+    // HLS 出错时会为直读片源再注册一次等待。
+    const fallback = playWhenVolumeReady(view.video, volume.ready, play, () => true, intent);
+    await flush();
+    loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .2 })));
+    await Promise.all([primary, fallback]);
+    expect(play).not.toHaveBeenCalled();
+    view.dispose();
+  });
+
+  it('四秒内没取回音量时保留默认值，之后迟到的记录不再改写', async () => {
+    vi.useFakeTimers();
+    let loaded!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async () => new Promise<Response>(resolve => { loaded = resolve })));
+    const view = mounted(), volume = mountVolumeMemory(view.player, view.video, .8);
+    expect(view.video.volume).toBe(.8);
+    await vi.advanceTimersByTimeAsync(4_000);
+    await volume.ready;
+    loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .1 })));
+    await playerMemory(view.player).load();
+    expect(view.video.volume).toBe(.8);
+    view.dispose();
+  });
+
   it('detached 音量状态释放后，迟到的记录不再改写音量', async () => {
     let loaded!: (response: Response) => void;
     vi.stubGlobal('fetch', vi.fn(async () => new Promise<Response>(resolve => { loaded = resolve })));
@@ -258,6 +290,7 @@ describe('单片音量记忆', () => {
     detached.dispose();
     loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .1 })));
     await detached.ready;
+    await flush();
     expect(native.volume).toBe(.6);
   });
 });

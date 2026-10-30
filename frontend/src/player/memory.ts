@@ -115,6 +115,12 @@ export interface VolumeState {
   dispose(): void;
 }
 
+export interface PlaybackIntent {
+  userActed: boolean;
+}
+
+export const createPlaybackIntent = (): PlaybackIntent => ({ userActed: false });
+
 function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume: number, disposed: () => boolean): VolumeState {
   let touched = false, restoring: number | undefined, programmatic: number | undefined, stopped = false;
   const apply = (value: number) => {
@@ -138,7 +144,7 @@ function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume
   video.addEventListener('volumechange', onVolumeChange);
   let finishReady = () => {};
   const ready = new Promise<void>(resolve => {
-    let settled = false;
+    let settled = false, timedOut = false;
     const finish = () => {
       if (settled) return;
       settled = true;
@@ -147,9 +153,9 @@ function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume
     };
     finishReady = finish;
     /* 本地记忆接口异常时不能让播放器无限等下去；超时后保留默认音量，迟到的记录也不再覆盖。 */
-    const timer = setTimeout(finish, 4_000);
+    const timer = setTimeout(() => { timedOut = true; finish() }, 4_000);
     void memory.load().then(saved => {
-      if (!stopped && !disposed()) {
+      if (!timedOut && !stopped && !disposed()) {
         const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
         if (!touched && !changedBeforeLoad && validVolume(saved.volume)) apply(saved.volume);
       }
@@ -178,14 +184,17 @@ export function playWhenVolumeReady(
   ready: Promise<void>,
   play: () => unknown,
   live: () => boolean = () => true,
+  intent: PlaybackIntent = createPlaybackIntent(),
 ): Promise<void> {
-  let started = false;
-  const onPlay = () => { started = true };
+  const onPlay = () => { intent.userActed = true };
+  const stopListening = () => video.removeEventListener('play', onPlay);
   video.addEventListener('play', onPlay);
   return ready.then(async () => {
-    if (started || !live() || !video.paused || video.ended) return;
+    // 移除监听后再启动自动播放，不能把自己的 play 事件记成用户操作。
+    stopListening();
+    if (intent.userActed || !live() || !video.paused || video.ended) return;
     await play();
-  }).finally(() => video.removeEventListener('play', onPlay));
+  }).finally(stopListening);
 }
 
 /** 音量只在用户调整时写入；恢复同一部视频的音量时不回写。

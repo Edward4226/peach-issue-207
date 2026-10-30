@@ -15,13 +15,14 @@ import { SubtitleSession } from './subtitle-memory';
 import { mountCaptionStyle } from './subtitle-style';
 import { mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory } from './memory';
 import { mountPlayerRotation } from './rotation';
-import { playerHost } from './host';
 
 export interface ImmersePlayerOptions {
   kind: 'immerse';
   item: PlayerItem;
   /** 这一格的流会话（`newStreamSession()`）。 */
   session: string;
+  /** 这台浏览器新开一格时的默认音量，范围 0–1。 */
+  defaultVolume?: number;
   /** 放完之后（沉浸模式接着放下一条）。 */
   onEnded?: () => void;
   /** 片源已经交给 video 且音量已经确定：调用方从这一刻起等它可以出画。拆得更快时不回调。 */
@@ -35,6 +36,7 @@ const BARE = {
 
 export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlayerOptions): () => void {
   const { item, session } = options;
+  const defaultVolume = options.defaultVolume ?? 1;
   let player: VjsPlayer | null = null, released = false;
   void Promise.all([playableStreamSource(item, session), ensureVideojs().catch(() => null)]).then(async ([source, vjs]) => {
     if (released) return;
@@ -43,8 +45,7 @@ export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlay
     let volumeReady: Promise<void>;
     // 播放器脚本拉不到时退回原生 video；原生元素播不了分片，只能直读。
     if (!vjs) {
-      const volume = mountDetachedVolumeMemory(video, playbackKey('item', item),
-        playerHost().settings().defaultVolume / 100);
+      const volume = mountDetachedVolumeMemory(video, playbackKey('item', item), defaultVolume);
       video.src = (segmented ? direct : source).src;
       video.addEventListener('emptied', volume.dispose, { once: true });
       volumeReady = volume.ready;
@@ -58,7 +59,7 @@ export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlay
       mountCaptionStyle(mounted.el(), video, captions.signal, playerMemory(mounted));
       mountPlayerRotation(mounted, video);
       mountPlaybackRate(mounted, video);
-      const volume = mountVolumeMemory(mounted, video, playerHost().settings().defaultVolume / 100);
+      const volume = mountVolumeMemory(mounted, video, defaultVolume);
       mounted.on('dispose', () => { captions.abort(); volume.dispose() });
       new SubtitleSession(mounted, video);
       mountPlayerSubtitles(mounted, item.id);

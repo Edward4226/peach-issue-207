@@ -142,6 +142,27 @@ describe('沉浸模式的每一格', () => {
     return { factory, made };
   }
 
+  it('冷启动直接进沉浸模式不依赖舞台宿主，默认音量随这一格传入', async () => {
+    stubFetch(() => ({ selected: null, tracks: [] }));
+    const { factory } = fakeVideojs();
+    const video = document.createElement('video');
+    let volume = 1;
+    Object.defineProperty(video, 'volume', {
+      configurable: true,
+      get: () => volume,
+      set: (next: number) => { volume = next },
+    });
+    const onLoaded = vi.fn();
+    const dispose = mountPlayer(video, {
+      kind: 'immerse', item: { id: 10 }, session: 'imm-0', defaultVolume: .4, onLoaded,
+    });
+    await flush(); await flush();
+    expect(factory).toHaveBeenCalledOnce();
+    expect(video.volume).toBe(.4);
+    expect(onLoaded).toHaveBeenCalledOnce();
+    dispose();
+  });
+
   it('片源按 stream-plan 交给裸播放器，分片出错退回直读；拆这一格时按会话取消并拆播放器', async () => {
     configurePlayer(host());
     const calls = stubFetch((url) => url.startsWith('/api/player/memory') ? { selected: null, tracks: [] }

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubtitleSession } from '../src/player/subtitle-memory';
 import type { VjsPlayer } from '../src/player/types';
-import { mountPlaybackRate, mountVolumeMemory, playerMemory } from '../src/player/memory';
+import { mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory } from '../src/player/memory';
 import { mountPlayerRotation } from '../src/player/rotation';
 import { mountCaptionStyle } from '../src/player/subtitle-style';
 
@@ -193,6 +193,44 @@ describe('单片音量记忆', () => {
     await flush();
     expect(view.video.volume).toBe(.8); expect(writes).toEqual([]);
     view.dispose();
+  });
+
+  it('自动播放等待记忆恢复完成；原生兜底也恢复同片音量', async () => {
+    let loaded!: (response: Response) => void;
+    const response = new Promise<Response>(resolve => { loaded = resolve });
+    const writes: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') { writes.push(JSON.parse(String(init.body))); return new Response('{}') }
+      return response;
+    }));
+    const view = mounted(), volume = mountVolumeMemory(view.player, view.video, 1);
+    const started = vi.fn(() => ({ volume: view.video.volume }));
+    void volume.ready.then(started);
+    await flush();
+    expect(started).not.toHaveBeenCalled();
+    loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: 0 })));
+    await volume.ready;
+    expect(started).toHaveBeenCalledOnce();
+    expect(started.mock.results[0]!.value).toEqual({ volume: 0 });
+    expect(writes).toEqual([]);
+    view.dispose();
+
+    let nativeLoaded!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init?: RequestInit) => new Promise<Response>(resolve => { nativeLoaded = resolve })));
+    const native = document.createElement('video');
+    let nativeVolume = 1;
+    Object.defineProperty(native, 'volume', {
+      configurable: true,
+      get: () => nativeVolume,
+      set: (next: number) => { nativeVolume = next },
+    });
+    const detached = mountDetachedVolumeMemory(native, 'item:3', .7);
+    expect(native.volume).toBe(.7);
+    await flush();
+    nativeLoaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .1 })));
+    await detached.ready;
+    expect(native.volume).toBe(.1);
+    detached.dispose();
   });
 });
 

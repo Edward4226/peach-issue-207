@@ -19,6 +19,7 @@ const sessions = new WeakMap<VjsPlayer, PlayerMemory>();
 
 class PlayerMemory {
   private cleanup = new AbortController();
+  private disposed = false;
   private reading: Promise<PlayerMemoryValue> | undefined;
   private listeners = new Set<() => void>();
   private restorers = new Set<(value: PlayerMemoryValue) => void>();
@@ -27,10 +28,15 @@ class PlayerMemory {
   private url: string;
   error = '';
 
-  constructor(player: VjsPlayer) {
-    const identity = player.peachPlaybackKey || (player.peachItem?.id ? `item:${player.peachItem.id}` : '');
+  constructor(identity: string) {
     this.url = identity ? `/api/player/memory?video=${encodeURIComponent(identity)}` : '';
-    player.on('dispose', () => { this.cleanup.abort(); this.listeners.clear(); this.restorers.clear() });
+  }
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.cleanup.abort();
+    this.listeners.clear();
+    this.restorers.clear();
   }
   subscribe(listener: () => void) {
     this.listeners.add(listener);
@@ -90,29 +96,35 @@ class PlayerMemory {
 
 export function playerMemory(player: VjsPlayer) {
   let memory = sessions.get(player);
-  if (!memory) { memory = new PlayerMemory(player); sessions.set(player, memory) }
+  if (!memory) {
+    const identity = player.peachPlaybackKey || (player.peachItem?.id ? `item:${player.peachItem.id}` : '');
+    memory = new PlayerMemory(identity);
+    sessions.set(player, memory);
+    player.on('dispose', () => memory!.dispose());
+  }
   return memory;
 }
 
 const validVolume = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 
-/** 音量只在用户调整时写入；恢复同一部视频的音量时不回写。
- *
- *  恢复写入 `video.volume` 会触发一次 `volumechange`，用目标值标记这一次事件并跳过保存；
- *  事件到达前用户又改了音量时当前值与目标值不同，仍按用户调整保存。静音只改 `muted`，
- *  这里读的是 `volume`，不会把静音写成 0。 */
-export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement, defaultVolume = 1) {
-  const memory = playerMemory(player);
-  let touched = false, restoring: number | undefined, programmatic: number | undefined;
+export interface VolumeState {
+  ready: Promise<void>;
+  current(): number;
+  set(next: number): void;
+  dispose(): void;
+}
+
+function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume: number, disposed: () => boolean): VolumeState {
+  let touched = false, restoring: number | undefined, programmatic: number | undefined, stopped = false;
   const apply = (value: number) => {
-    if (player.isDisposed() || !validVolume(value)) return;
+    if (disposed() || !validVolume(value)) return;
     programmatic = value;
     if (video.volume === value) return;
     restoring = value; video.volume = value;
   };
   const save = () => {
-    if (player.isDisposed() || !validVolume(video.volume)) return;
+    if (disposed() || !validVolume(video.volume)) return;
     void memory.save({ volume: video.volume }).catch(() => {});
   };
   const onVolumeChange = () => {
@@ -123,17 +135,51 @@ export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement, de
     touched = true; save();
   };
   apply(validVolume(defaultVolume) ? defaultVolume : 1);
-  memory.restore(saved => {
-    const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
-    if (!touched && !changedBeforeLoad && saved.volume !== undefined) apply(saved.volume);
-  });
   video.addEventListener('volumechange', onVolumeChange);
-  player.on('dispose', () => video.removeEventListener('volumechange', onVolumeChange));
+  const ready = memory.load().then(saved => {
+    const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
+    if (!touched && !changedBeforeLoad && validVolume(saved.volume)) apply(saved.volume);
+  }).catch(() => {});
   return {
+    ready,
     current: () => video.volume,
     set(next: number) {
       touched = true; apply(next);
       if (video.volume === next) save();
+    },
+    dispose() {
+      if (stopped) return;
+      stopped = true;
+      video.removeEventListener('volumechange', onVolumeChange);
+    },
+  };
+}
+
+/** 音量只在用户调整时写入；恢复同一部视频的音量时不回写。
+ *
+ *  恢复写入 `video.volume` 会触发一次 `volumechange`，用目标值标记这一次事件并跳过保存；
+ *  事件到达前用户又改了音量时当前值与目标值不同，仍按用户调整保存。静音只改 `muted`，
+ *  这里读的是 `volume`，不会把静音写成 0。
+ *
+ *  返回的 `ready` 在默认音量与同片记录之间确定最终值后才解决。自动播放必须等它，
+ *  否则记录里是 0 或较低音量时，会先以默认音量出声。 */
+export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement, defaultVolume = 1) {
+  const memory = playerMemory(player);
+  const state = bindVolume(video, memory, defaultVolume, () => player.isDisposed());
+  player.on('dispose', state.dispose);
+  return state;
+}
+
+/** 原生 `<video>` 兜底没有 Video.js 实例，也用同一个身份读写音量记录。
+ *  `ready` 在默认值与同片记录之间确定最终值后才解决。 */
+export function mountDetachedVolumeMemory(video: HTMLVideoElement, identity: string, defaultVolume = 1) {
+  const memory = new PlayerMemory(identity);
+  const state = bindVolume(video, memory, defaultVolume, () => false);
+  return {
+    ...state,
+    dispose() {
+      state.dispose();
+      memory.dispose();
     },
   };
 }

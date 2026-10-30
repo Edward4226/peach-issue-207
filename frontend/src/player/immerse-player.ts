@@ -13,7 +13,7 @@ import { mountPlayerSubtitles } from './controls';
 import { playbackKey } from './progress';
 import { SubtitleSession } from './subtitle-memory';
 import { mountCaptionStyle } from './subtitle-style';
-import { mountPlaybackRate, mountVolumeMemory, playerMemory } from './memory';
+import { mountDetachedVolumeMemory, mountPlaybackRate, mountVolumeMemory, playerMemory } from './memory';
 import { mountPlayerRotation } from './rotation';
 import { playerHost } from './host';
 
@@ -36,12 +36,19 @@ const BARE = {
 export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlayerOptions): () => void {
   const { item, session } = options;
   let player: VjsPlayer | null = null, released = false;
-  void Promise.all([playableStreamSource(item, session), ensureVideojs().catch(() => null)]).then(([source, vjs]) => {
+  void Promise.all([playableStreamSource(item, session), ensureVideojs().catch(() => null)]).then(async ([source, vjs]) => {
     if (released) return;
     const direct = directStreamSource(item, session);
     const segmented = String(source.type || '').includes('mpegurl');
     // 播放器脚本拉不到时退回原生 video；原生元素播不了分片，只能直读。
-    if (!vjs) video.src = (segmented ? direct : source).src;
+    if (!vjs) {
+      const volume = mountDetachedVolumeMemory(video, playbackKey('item', item),
+        playerHost().settings().defaultVolume / 100);
+      await volume.ready;
+      if (released) { volume.dispose(); return }
+      video.src = (segmented ? direct : source).src;
+      video.addEventListener('emptied', volume.dispose, { once: true });
+    }
     else {
       const mounted = vjs(video, BARE);
       player = mounted;
@@ -51,11 +58,13 @@ export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlay
       mountCaptionStyle(mounted.el(), video, captions.signal, playerMemory(mounted));
       mountPlayerRotation(mounted, video);
       mountPlaybackRate(mounted, video);
-      mountVolumeMemory(mounted, video, playerHost().settings().defaultVolume / 100);
-      mounted.on('dispose', () => captions.abort());
+      const volume = mountVolumeMemory(mounted, video, playerHost().settings().defaultVolume / 100);
+      mounted.on('dispose', () => { captions.abort(); volume.dispose() });
       new SubtitleSession(mounted, video);
       mountPlayerSubtitles(mounted, item.id);
       if (segmented) mounted.one('error', () => { if (!released) mounted.src(direct) });
+      await volume.ready;
+      if (released || mounted.isDisposed()) return;
       mounted.src(source);
     }
     wireTelemetry(item, video, options.onEnded ? { onEnded: options.onEnded } : {});

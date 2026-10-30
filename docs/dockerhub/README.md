@@ -50,8 +50,8 @@ services:
     ports:
       - "${PEACH_BIND:-127.0.0.1}:${PEACH_PORT:-8900}:8900"
     environment:
-      PEACH_UID: "${PEACH_UID:-1000}"
-      PEACH_GID: "${PEACH_GID:-1000}"
+      PEACH_UID: "${PEACH_UID-1000}"
+      PEACH_GID: "${PEACH_GID-1000}"
     volumes:
       - peach-data:/data
       - type: bind

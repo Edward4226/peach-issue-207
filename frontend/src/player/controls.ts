@@ -12,7 +12,7 @@ import { SubtitleControls, subtitleIcon } from './subtitles';
 import { timelineFrame, type TimelineSheets } from './timeline';
 import { mountPlayerRotation } from './rotation';
 import { mountPlayerPipControl } from './pip';
-import { mountPlaybackRate, playerMemory } from './memory';
+import { mountPlaybackRate, mountVolumeMemory, playerMemory } from './memory';
 
 type TooltipSync = (label?: string, aria?: string) => void;
 
@@ -142,6 +142,7 @@ export function mountPlayerQualityControl(
   const menu = root.querySelector<HTMLElement>('.vjs-peach-settings-menu')!;
   const rotation = mountPlayerRotation(player, video);
   const rememberRate = mountPlaybackRate(player, video);
+  mountVolumeMemory(player, video);
   const memory = playerMemory(player);
   let subtitleControls: SubtitleControls | undefined;
   const levels = typeof player.qualityLevels === 'function' ? player.qualityLevels() : null;

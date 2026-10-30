@@ -2,12 +2,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubtitleSession } from '../src/player/subtitle-memory';
 import type { VjsPlayer } from '../src/player/types';
-import { mountPlaybackRate, playerMemory } from '../src/player/memory';
+import { mountPlaybackRate, mountVolumeMemory, playerMemory } from '../src/player/memory';
 import { mountPlayerRotation } from '../src/player/rotation';
 import { mountCaptionStyle } from '../src/player/subtitle-style';
 
-function mounted() {
+function mounted(id = 1) {
   const video = document.createElement('video'), events = new EventTarget();
+  let volume = 1;
+  Object.defineProperty(video, 'volume', {
+    configurable: true,
+    get: () => volume,
+    set: (next: number) => { volume = next },
+  });
   const tracks = Object.assign([] as TextTrack[], {
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
@@ -16,7 +22,7 @@ function mounted() {
   const disposing: (() => void)[] = [];
   const root = document.createElement('div'); root.innerHTML = '<media-container></media-container>';
   let rate = 1;
-  const player = { peachItem: { id: 1 }, on: (_event: string, callback: () => void) => disposing.push(callback),
+  const player = { peachItem: { id }, on: (_event: string, callback: () => void) => disposing.push(callback),
     el: () => root, playbackRate: (next?: number) => next === undefined ? rate : (rate = next),
     isDisposed: () => false } as unknown as VjsPlayer;
   return { video, tracks, player,
@@ -102,6 +108,70 @@ describe('统一播放文件记忆', () => {
     await memory.save({ rate: 2 });
     expect(writes).toEqual([{ rotation: 90 }, { rotation: 90, rate: 2 }]);
     expect(memory.error).toBe(''); view.dispose();
+  });
+});
+
+describe('单片音量记忆', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  it('恢复同一部视频的音量，程序恢复不回写，用户调整才保存', async () => {
+    const store = new Map<string, { selected: null; tracks: unknown[]; volume?: number }>([
+      ['/api/player/memory?video=item%3A1', { selected: null, tracks: [], volume: .35 }],
+    ]);
+    const puts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body));
+        puts.push({ url: String(url), body });
+        store.set(String(url), { ...(store.get(String(url)) || { selected: null, tracks: [] }), ...body });
+        return new Response('{}');
+      }
+      return new Response(JSON.stringify(store.get(String(url)) || { selected: null, tracks: [] }));
+    }));
+    const view = mounted(), memory = mountVolumeMemory(view.player, view.video);
+    await playerMemory(view.player).load(); await flush();
+    expect(view.video.volume).toBe(.35); expect(memory.current()).toBe(.35);
+    expect(puts).toEqual([]);
+    // 恢复写入 volume 后浏览器补发的 volumechange 不应回写。
+    view.video.dispatchEvent(new Event('volumechange'));
+    expect(puts).toEqual([]);
+    // 用户随后主动调整仍应保存。
+    view.video.volume = .6; view.video.dispatchEvent(new Event('volumechange'));
+    await flush();
+    expect(puts).toEqual([{ url: '/api/player/memory?video=item%3A1', body: { volume: .6 } }]);
+    // 静音只改 muted，不把当前音量写成 0。
+    view.video.muted = true; view.video.dispatchEvent(new Event('volumechange'));
+    await flush();
+    expect(puts.at(-1)?.body).toEqual({ volume: .6 });
+    view.dispose();
+
+    const reopened = mounted();
+    mountVolumeMemory(reopened.player, reopened.video);
+    await playerMemory(reopened.player).load(); await flush();
+    expect(reopened.video.volume).toBe(.6);
+    reopened.dispose();
+
+    // 另一部视频没有记录时保留当前音量，不继承 item:1 的值。
+    const other = mounted(2);
+    mountVolumeMemory(other.player, other.video);
+    await playerMemory(other.player).load(); await flush();
+    expect(other.video.volume).toBe(1);
+    other.dispose();
+  });
+
+  it('越界或非有限的音量既不恢复也不保存', async () => {
+    const writes: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') { writes.push(JSON.parse(String(init.body))); return new Response('{}') }
+      return new Response(JSON.stringify({ selected: null, tracks: [], volume: 1.5 }));
+    }));
+    const view = mounted(), memory = mountVolumeMemory(view.player, view.video);
+    await playerMemory(view.player).load(); await flush();
+    expect(view.video.volume).toBe(1);
+    memory.set(Number.NaN); memory.set(Number.POSITIVE_INFINITY); memory.set(-.1);
+    await flush();
+    expect(view.video.volume).toBe(1); expect(writes).toEqual([]);
+    view.dispose();
   });
 });
 

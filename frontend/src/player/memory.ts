@@ -8,6 +8,7 @@ export interface PlayerMemoryValue {
   tracks: { key: string; name: string; src: string }[];
   rotation?: number;
   rate?: number;
+  volume?: number;
   caption_style?: Partial<CaptionStyle>;
 }
 export type PlayerMemoryPatch = Partial<Omit<PlayerMemoryValue, 'tracks'>> & {
@@ -91,6 +92,46 @@ export function playerMemory(player: VjsPlayer) {
   let memory = sessions.get(player);
   if (!memory) { memory = new PlayerMemory(player); sessions.set(player, memory) }
   return memory;
+}
+
+const validVolume = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+
+/** 音量只在用户调整时写入；恢复同一部视频的音量时不回写。
+ *
+ *  恢复写入 `video.volume` 会触发一次 `volumechange`，用目标值标记这一次事件并跳过保存；
+ *  事件到达前用户又改了音量时当前值与目标值不同，仍按用户调整保存。静音只改 `muted`，
+ *  这里读的是 `volume`，不会把静音写成 0。 */
+export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement) {
+  const memory = playerMemory(player);
+  let touched = false, restoring: number | undefined;
+  const apply = (value: number) => {
+    if (player.isDisposed() || !validVolume(value) || video.volume === value) return;
+    restoring = value; video.volume = value;
+  };
+  const save = () => {
+    if (player.isDisposed() || !validVolume(video.volume)) return;
+    void memory.save({ volume: video.volume }).catch(() => {});
+  };
+  const onVolumeChange = () => {
+    if (restoring !== undefined) {
+      const target = restoring; restoring = undefined;
+      if (video.volume === target) return;
+    }
+    touched = true; save();
+  };
+  memory.restore(saved => {
+    if (!touched && saved.volume !== undefined) apply(saved.volume);
+  });
+  video.addEventListener('volumechange', onVolumeChange);
+  player.on('dispose', () => video.removeEventListener('volumechange', onVolumeChange));
+  return {
+    current: () => video.volume,
+    set(next: number) {
+      touched = true; apply(next);
+      if (video.volume === next) save();
+    },
+  };
 }
 
 /** 倍速只在用户选择时写入；媒体换源后恢复同一部视频的设置。 */

@@ -15,6 +15,7 @@ import { SubtitleSession } from './subtitle-memory';
 import { mountCaptionStyle } from './subtitle-style';
 import { mountPlaybackRate, mountVolumeMemory, playerMemory } from './memory';
 import { mountPlayerRotation } from './rotation';
+import { playerHost } from './host';
 
 export interface ImmersePlayerOptions {
   kind: 'immerse';
@@ -50,7 +51,7 @@ export function mountImmersePlayer(video: HTMLVideoElement, options: ImmersePlay
       mountCaptionStyle(mounted.el(), video, captions.signal, playerMemory(mounted));
       mountPlayerRotation(mounted, video);
       mountPlaybackRate(mounted, video);
-      mountVolumeMemory(mounted, video);
+      mountVolumeMemory(mounted, video, playerHost().settings().defaultVolume / 100);
       mounted.on('dispose', () => captions.abort());
       new SubtitleSession(mounted, video);
       mountPlayerSubtitles(mounted, item.id);

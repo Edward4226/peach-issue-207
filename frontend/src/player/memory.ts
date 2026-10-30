@@ -102,11 +102,13 @@ const validVolume = (value: unknown): value is number =>
  *  恢复写入 `video.volume` 会触发一次 `volumechange`，用目标值标记这一次事件并跳过保存；
  *  事件到达前用户又改了音量时当前值与目标值不同，仍按用户调整保存。静音只改 `muted`，
  *  这里读的是 `volume`，不会把静音写成 0。 */
-export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement) {
+export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement, defaultVolume = 1) {
   const memory = playerMemory(player);
-  let touched = false, restoring: number | undefined;
+  let touched = false, restoring: number | undefined, programmatic: number | undefined;
   const apply = (value: number) => {
-    if (player.isDisposed() || !validVolume(value) || video.volume === value) return;
+    if (player.isDisposed() || !validVolume(value)) return;
+    programmatic = value;
+    if (video.volume === value) return;
     restoring = value; video.volume = value;
   };
   const save = () => {
@@ -120,8 +122,10 @@ export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement) {
     }
     touched = true; save();
   };
+  apply(validVolume(defaultVolume) ? defaultVolume : 1);
   memory.restore(saved => {
-    if (!touched && saved.volume !== undefined) apply(saved.volume);
+    const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
+    if (!touched && !changedBeforeLoad && saved.volume !== undefined) apply(saved.volume);
   });
   video.addEventListener('volumechange', onVolumeChange);
   player.on('dispose', () => video.removeEventListener('volumechange', onVolumeChange));

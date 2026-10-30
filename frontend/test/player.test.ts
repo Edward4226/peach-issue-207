@@ -28,7 +28,8 @@ function stubFetch(reply: (url: string) => unknown): FetchCall[] {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const host = (seekSeconds = 10): PlayerHost => ({
-  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
+  settings: () => ({ ambientMode: false, theaterMode: false, seekSeconds, defaultVolume: 100,
+    miniplayer: true, detailAutoplay: false, javImage: 'cover' }),
   saveSettings: () => {},
   toast: () => {},
   loadSourceStatus: async () => ({}),
@@ -142,6 +143,7 @@ describe('沉浸模式的每一格', () => {
   }
 
   it('片源按 stream-plan 交给裸播放器，分片出错退回直读；拆这一格时按会话取消并拆播放器', async () => {
+    configurePlayer(host());
     const calls = stubFetch((url) => url.startsWith('/api/player/memory') ? { selected: null, tracks: [] }
       : url.startsWith('/api/stream-plan') ? { protocol: 'hls', src: '/stream/hls/8/index.m3u8' } : { cancelled: 1 });
     const { factory, made } = fakeVideojs();

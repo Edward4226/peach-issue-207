@@ -87,7 +87,7 @@ describe('统一播放文件记忆', () => {
     rotation.set(180); rate.set(1.25); style.set('size', '200');
     loaded(new Response(JSON.stringify({ selected: null, tracks: [], rotation: 90, rate: 2,
       caption_style: { size: '150', color: 'yellow' } })));
-    await memory.load(); await flush();
+    await playerMemory(view.player).load(); await flush();
     expect(rotation.angle()).toBe(180); expect(view.player.playbackRate()).toBe(1.25);
     expect(style.current()).toMatchObject({ size: '200', color: 'yellow' });
     expect(writes).toEqual([{ rotation: 180 }, { rate: 1.25 }, { caption_style: { size: '200' } }]);
@@ -128,7 +128,8 @@ describe('单片音量记忆', () => {
       }
       return new Response(JSON.stringify(store.get(String(url)) || { selected: null, tracks: [] }));
     }));
-    const view = mounted(), memory = mountVolumeMemory(view.player, view.video);
+    const view = mounted(), memory = mountVolumeMemory(view.player, view.video, .8);
+    expect(view.video.volume).toBe(.8);
     await playerMemory(view.player).load(); await flush();
     expect(view.video.volume).toBe(.35); expect(memory.current()).toBe(.35);
     expect(puts).toEqual([]);
@@ -146,17 +147,37 @@ describe('单片音量记忆', () => {
     view.dispose();
 
     const reopened = mounted();
-    mountVolumeMemory(reopened.player, reopened.video);
+    mountVolumeMemory(reopened.player, reopened.video, .9);
     await playerMemory(reopened.player).load(); await flush();
     expect(reopened.video.volume).toBe(.6);
     reopened.dispose();
 
     // 另一部视频没有记录时保留当前音量，不继承 item:1 的值。
     const other = mounted(2);
-    mountVolumeMemory(other.player, other.video);
+    mountVolumeMemory(other.player, other.video, .25);
     await playerMemory(other.player).load(); await flush();
-    expect(other.video.volume).toBe(1);
+    expect(other.video.volume).toBe(.25);
     other.dispose();
+  });
+
+  it('用户读取期间主动调音量，迟到的单片记录不能覆盖', async () => {
+    let loaded!: (response: Response) => void;
+    const response = new Promise<Response>(resolve => { loaded = resolve });
+    const writes: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') { writes.push(JSON.parse(String(init.body))); return new Response('{}') }
+      return response;
+    }));
+    const view = mounted();
+    mountVolumeMemory(view.player, view.video, .4);
+    expect(view.video.volume).toBe(.4);
+    view.video.volume = .7; view.video.dispatchEvent(new Event('volumechange'));
+    await flush();
+    loaded(new Response(JSON.stringify({ selected: null, tracks: [], volume: .2 })));
+    await playerMemory(view.player).load(); await flush();
+    expect(view.video.volume).toBe(.7);
+    expect(writes).toEqual([{ volume: .7 }]);
+    view.dispose();
   });
 
   it('越界或非有限的音量既不恢复也不保存', async () => {
@@ -165,12 +186,12 @@ describe('单片音量记忆', () => {
       if (init?.method === 'PUT') { writes.push(JSON.parse(String(init.body))); return new Response('{}') }
       return new Response(JSON.stringify({ selected: null, tracks: [], volume: 1.5 }));
     }));
-    const view = mounted(), memory = mountVolumeMemory(view.player, view.video);
+    const view = mounted(), memory = mountVolumeMemory(view.player, view.video, .8);
     await playerMemory(view.player).load(); await flush();
-    expect(view.video.volume).toBe(1);
+    expect(view.video.volume).toBe(.8);
     memory.set(Number.NaN); memory.set(Number.POSITIVE_INFINITY); memory.set(-.1);
     await flush();
-    expect(view.video.volume).toBe(1); expect(writes).toEqual([]);
+    expect(view.video.volume).toBe(.8); expect(writes).toEqual([]);
     view.dispose();
   });
 });

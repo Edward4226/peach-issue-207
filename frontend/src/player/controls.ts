@@ -142,7 +142,7 @@ export function mountPlayerQualityControl(
   const menu = root.querySelector<HTMLElement>('.vjs-peach-settings-menu')!;
   const rotation = mountPlayerRotation(player, video);
   const rememberRate = mountPlaybackRate(player, video);
-  mountVolumeMemory(player, video);
+  mountVolumeMemory(player, video, playerHost().settings().defaultVolume / 100);
   const memory = playerMemory(player);
   let subtitleControls: SubtitleControls | undefined;
   const levels = typeof player.qualityLevels === 'function' ? player.qualityLevels() : null;

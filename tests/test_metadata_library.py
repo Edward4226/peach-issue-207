@@ -15,15 +15,15 @@ from contextlib import closing
 
 from filelock import FileLock
 from PIL import Image
-from peach import artifact_rules, upgrade_rules
+from peach import artifact_rules, library_processing, upgrade_rules
 
 from peach.field_owners import auto_owner, owner_of, review_owner
 from peach.genre_taxonomy import map_genres
 from peach.jav_cover_fetch import NotFound
 from peach.http import HttpResponse
 from peach.library_nfo import read_nfo, sidecars, local_art
-from peach.library_processing import (STALL_AFTER_SECONDS, _candidate_identity, _save, decorate,
-                                      issues_path, _merge_local_performer_profiles,
+from peach.library_processing import (STALL_AFTER_SECONDS, ProcessingBusy, _candidate_identity, _save,
+                                      decorate, issues_path, _merge_local_performer_profiles,
                                       process_library, snapshot, state_path, _fields)
 from peach.metadata_auto_apply import _apply_metadata_candidate
 from peach.repository import LedgerDatabase
@@ -3314,6 +3314,38 @@ class LibraryPreviewCompletionTests(unittest.TestCase):
         self.assertEqual(second['status'], 'complete')
         capture.assert_not_called()
 
+    def test_one_video_reuses_decode_probe_for_all_nine_frames(self):
+        from peach import frame_capture, hardware_transcode
+        from peach.media_io import file_stat
+        ffmpeg = self.root / ('ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
+        ffmpeg.write_bytes(b'fixture')
+        ffmpeg.with_name('ffprobe' + ffmpeg.suffix).write_bytes(b'fixture')
+        self.resolver.ffmpeg.return_value = SimpleNamespace(path=ffmpeg)
+        timestamps = []
+
+        def capture(_ffmpeg, _source, timestamp, destination, **options):
+            timestamps.append(timestamp)
+            self.assertEqual(options['input_options'], ('-hwaccel', 'd3d11va'))
+            Image.new('RGB', (480, 270), 'green').save(destination, format='JPEG')
+            return True, ''
+
+        with patch('peach.library_processing.FFmpegResolver', return_value=self.resolver), \
+                patch('peach.hardware_transcode.sys.platform', 'win32'), \
+                patch.object(hardware_transcode, '_d3d11va_ready', return_value=True), \
+                patch.object(hardware_transcode, '_frame_codec', return_value='hevc'), \
+                patch('peach.media_processing_policy.acceleration', return_value='auto'), \
+                patch('peach.media_io.file_stat', wraps=file_stat) as reads, \
+                patch.object(frame_capture, 'capture_frame', side_effect=capture), \
+                patch.object(frame_capture, 'tile_frames', side_effect=self.make_tile):
+            result = self.run_processing(stage='previews')
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['previews'], 1)
+        self.assertEqual(len(set(timestamps)), 9)
+        self.assertEqual(reads.call_count, 1)
+        with self.database.read_connection() as connection:
+            snapshot = connection.execute('SELECT snapshot_path FROM asset WHERE id=1').fetchone()[0]
+        self.assertTrue(Path(snapshot).is_file())
+
     def test_preview_only_leaves_candidates_and_sources_untouched(self):
         factory = Mock(side_effect=AssertionError('外部资料不属于预览任务'))
         with patch('peach.library_processing.FFmpegResolver', return_value=self.resolver), \
@@ -3444,7 +3476,8 @@ class LibraryPreviewCompletionTests(unittest.TestCase):
         import zipfile
         from peach import support_bundle
 
-        def fail(_ffmpeg, video, _timestamp, _destination, *, diagnostics, timeout):
+        def fail(_ffmpeg, video, _timestamp, _destination, *, diagnostics, timeout, decode_options):
+            self.assertEqual(decode_options, ())
             self.assertGreater(timeout, 0)
             self.assertLessEqual(timeout, 45)
             diagnostics.update(reason='ffmpeg_error', returncode=69, timestamp_seconds=2.4667,
@@ -3585,3 +3618,157 @@ class LibraryPreviewCompletionTests(unittest.TestCase):
                                  generated / 'posters', generated / 'avatars', generated / 'logos')
         with Image.open(service.poster(1)) as image:
             self.assertEqual(image.size, (480, 270))
+
+
+class ProcessingLockTests(unittest.TestCase):
+    """全库处理锁：用户发起的处理等锁，后台定向任务让路而不是报错。"""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        media = self.root / 'media'
+        media.mkdir()
+        prefix = str(media) if os.name == 'nt' else 'R:\\Media'
+        self.config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                                  locations={'local': (prefix,)}, mounts={'local': (str(media),)})
+        self.enterContext(patch('peach.settings_file.active', return_value=self.config))
+        self.db = fresh_ledger(self.root)
+        self.database = LedgerDatabase(self.db)
+        with self.database.write_transaction() as connection:
+            for aid, code in ((1, 'ABW-358'), (2, 'ABW-359')):
+                video = media / f'{code}.mp4'
+                video.write_bytes(b'video')
+                connection.execute('INSERT INTO asset(id,location,path,name,medium,code) VALUES(?,?,?,?,?,?)',
+                                   (aid, 'local', str(PureWindowsPath(prefix) / video.name), video.name,
+                                    'video', code))
+
+    def test_a_user_can_cancel_while_waiting_for_the_processing_lock(self):
+        stopped = threading.Event()
+        errors = []
+        provider = stub_provider()
+        holder = FileLock(str(state_path(self.config)) + '.lock', timeout=0)
+        holder.acquire()
+
+        def user_run():
+            try:
+                process_library(self.config, self.db, self.root / 'generated', self.root / 'covers',
+                                provider_factory=lambda: provider, database=self.database,
+                                active=lambda: not stopped.is_set())
+            except Exception as error:
+                errors.append(error)
+
+        with patch('peach.library_processing.LOCK_RETRY_SECONDS', 0.01):
+            thread = threading.Thread(target=user_run)
+            thread.start()
+            try:
+                deadline = time.monotonic() + 10
+                while not library_processing._foreground_waiting() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(library_processing._foreground_waiting())
+                stopped.set()
+                thread.join(10)
+                self.assertFalse(thread.is_alive())
+            finally:
+                stopped.set()
+                holder.release()
+                thread.join(10)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], InterruptedError)
+        self.assertFalse(library_processing._foreground_waiting())
+        provider.query.assert_not_called()
+
+    def test_a_background_collection_steps_aside_while_the_processing_lock_is_held(self):
+        config, db, database = self.config, self.db, self.database
+        provider = stub_provider()
+        provider.query.return_value = {}
+        output = self.root / 'state/upgrade-repairs/1.json'
+        holder = FileLock(str(state_path(config)) + '.lock', timeout=0)
+        holder.acquire()
+        try:
+            with self.assertRaises(ProcessingBusy) as caught:
+                process_library(config, db, self.root / 'generated', self.root / 'covers', asset_ids=[1],
+                                stage='collect', state_file=output, provider_factory=lambda: provider,
+                                database=database)
+            self.assertFalse(caught.exception.ready())
+        finally:
+            holder.release()
+        self.assertTrue(caught.exception.ready())
+        provider.query.assert_not_called()
+
+    def test_a_user_run_waits_for_the_processing_lock_and_holds_background_work_back(self):
+        config, db, database = self.config, self.db, self.database
+        provider = stub_provider()
+        provider.query.return_value = {}
+        holder = FileLock(str(state_path(config)) + '.lock', timeout=0)
+        holder.acquire()
+        results, errors = [], []
+
+        def user_run():
+            try:
+                results.append(process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                               provider_factory=lambda: provider, database=database))
+            except Exception as error:
+                errors.append(error)
+
+        with patch('peach.library_processing.LOCK_RETRY_SECONDS', 0.01), \
+                patch('peach.library_processing._enrich_finished_performers',
+                      return_value={'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}):
+            thread = threading.Thread(target=user_run)
+            thread.start()
+            try:
+                deadline = time.monotonic() + 10
+                while not library_processing._foreground_waiting() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(library_processing._foreground_waiting())
+                with self.assertRaises(ProcessingBusy):
+                    process_library(config, db, self.root / 'generated', self.root / 'covers', asset_ids=[1],
+                                    stage='collect', state_file=self.root / 'state/upgrade-repairs/1.json',
+                                    provider_factory=lambda: provider, database=database)
+            finally:
+                holder.release()
+                thread.join(30)
+        self.assertEqual(errors, [])
+        self.assertNotEqual(results[0].get('outcome'), 'interrupted')
+        self.assertEqual(sorted({call.args[0] for call in provider.query.call_args_list}), ['ABW-358', 'ABW-359'])
+        self.assertFalse(library_processing._foreground_waiting())
+
+    def test_a_running_background_collection_yields_to_a_user_run_at_its_next_checkpoint(self):
+        config, db, database = self.config, self.db, self.database
+        entered, proceed = threading.Event(), threading.Event()
+
+        def query(*_args, **_kwargs):
+            if not entered.is_set():
+                entered.set()
+                proceed.wait(10)
+            return {}
+
+        provider = stub_provider()
+        provider.query.side_effect = query
+        background, user = [], []
+
+        def run(sink, **options):
+            try:
+                sink.append(process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                            provider_factory=lambda: provider, database=database, **options))
+            except Exception as error:
+                sink.append(error)
+
+        with patch('peach.library_processing.LOCK_RETRY_SECONDS', 0.01), \
+                patch('peach.library_processing._enrich_finished_performers',
+                      return_value={'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}):
+            first = threading.Thread(target=run, args=(background,), kwargs=dict(
+                asset_ids=[1, 2], stage='collect', state_file=self.root / 'state/upgrade-repairs/1.json'))
+            first.start()
+            self.assertTrue(entered.wait(10))
+            second = threading.Thread(target=run, args=(user,))
+            second.start()
+            deadline = time.monotonic() + 10
+            while not library_processing._foreground_waiting() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            proceed.set()
+            first.join(30)
+            second.join(30)
+        self.assertIsInstance(background[0], ProcessingBusy)
+        self.assertIsInstance(user[0], dict)
+        self.assertNotEqual(user[0].get('outcome'), 'interrupted')

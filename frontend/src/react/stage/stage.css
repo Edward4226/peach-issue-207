@@ -98,12 +98,17 @@ body[data-detail-open] [class~=glowlayer]::before{animation-play-state:paused,pa
 }
 .peach-react [data-detail-continuation] [data-media-card][data-variant="next"]{width:var(--detail-card-width);gap:6px;isolation:isolate}
 .peach-react [data-detail-continuation] [data-media-card][data-variant="next"] [data-media-pic]{aspect-ratio:16/9;flex:none}
-.peach-react [data-detail-continuation] [data-media-card][data-variant="next"]:not([data-follow-item]) [data-media-meta]{height:var(--detail-card-meta-height);flex:none}
+/* 这一排的卡高按封面、两行标题、一行署名和一行推荐理由定死，馆藏卡与关注卡同一份预算：关注卡
+   以前多一行标签，伸出卡底和横排的裁切边，悬停面跟着被切掉一条。 */
+.peach-react [data-detail-continuation] [data-media-card][data-variant="next"] [data-media-meta]{height:var(--detail-card-meta-height);flex:none}
 [data-detail-continuation] [data-media-card][data-variant="next"] [data-media-text]{gap:4px}
-[data-detail-continuation] [data-media-card][data-variant="next"] [data-media-next-reason]{min-height:1.45em;max-height:1.45em;-webkit-line-clamp:1}
+/* 理由只占一行：按行数裁的话，下划线连起来的长标签整枚折到第二行，第一行只剩半句；不折行、在行尾省略。 */
+.peach-react [data-detail-continuation] [data-media-card][data-variant="next"] [data-media-next-reason]{display:block;min-height:1.45em;max-height:1.45em;
+  white-space:nowrap;text-overflow:ellipsis}
 .peach-react [data-detail-continuation] [data-media-card][data-variant="next"]:is(:hover,:focus-within){background:transparent;box-shadow:none}
 [data-detail-continuation] [data-media-card][data-variant="next"]::before{content:"";position:absolute;inset:-8px;z-index:-1;
-  border-radius:calc(var(--surface-radius) + 8px);background:var(--library-hover,var(--hover));opacity:0;pointer-events:none}
+  border-radius:calc(var(--surface-radius) + 8px);background:var(--library-hover,var(--hover));opacity:0;pointer-events:none;
+  transition:opacity .15s ease}
 [data-detail-continuation] [data-media-card][data-variant="next"]:is(:hover,:focus-within)::before{opacity:1}
 .peach-react [data-detail-continuation] [data-media-card][data-variant="next"][data-longhover]{transform:none;filter:none}
 [data-detail-continuation]:has(>[data-mix-queue]) [data-media-card][data-variant="next"] [data-media-pic]{aspect-ratio:16/9}

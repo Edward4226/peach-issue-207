@@ -475,11 +475,17 @@ class LibraryMetadataProvider:
             raise _again(cache[code])
         return [*have.items(), *((source, payload) for source, payload in cache[code] if source not in have)]
 
+    def community_problems(self, code):
+        """`community` 问这个番号时没问成的几家 `[(原因, 是否冷却)]`，别的几家照常答上时也留着。
+
+        封面那一步据此不下「没有」的结论（#342）：JavBus 断线、javdb 答上时，只剩 javdb 带水印的那张，
+        印证不了也用不了，可 JavBus 那张下次可能就取到了。"""
+        return list(self.__dict__.get('_community_problems', {}).get(code, ()))
+
     def _ask_community(self, code, sources, deadline, received):
         """逐家问 `sources`，交出答上的 `[(来源, 资料)]`，或一个待缓存再抛的异常（见 `community`）。"""
-        from .jav_cover_fetch import Unavailable
-        from .scraping_access import SourcePaused
-        found, problems, said_no, held = [], [], [], 0
+        found, problems, said_no = [], [], []
+        self.__dict__.setdefault('_community_problems', {})[code] = problems
         for source in sources:
             try:
                 payload = self.site(source, code, deadline=deadline)
@@ -492,15 +498,15 @@ class LibraryMetadataProvider:
                 if is_missing(error):
                     said_no.append(source)
                     continue
-                held += source_paused(error)
                 text = describe_failure(error)
-                problems.append(text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}')
+                problems.append((text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}',
+                                 source_paused(error)))
                 continue
             found.append((source, payload))
             received([(source, payload)])
         if found or not problems:
             return found or _said_no('社区来源都没有这个番号', said_no)
-        return (SourcePaused if held == len(problems) else Unavailable)('；'.join(problems))
+        return _unreached(problems)
 
     def fc2(self, code, *, deadline=None, route=None, covers=False, required=(), known=(), received=lambda found: None):
         """FC2 自己那一页，下架了就依次问几个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
@@ -694,6 +700,7 @@ class LibraryMetadataProvider:
                 answers = self.community(code, deadline=_extended(deadline, self.excused - mark), absent=absent,
                                          known=[(name, payload) for name, payload in snapshots
                                                 if name in metadata_routes.COMMUNITY_STAGE])
+                problems += self.community_problems(code)
                 *picked, verified_by = verified_cover(self.transport, code, answers,
                                                       reference=official, siblings=siblings if official else (),
                                                       deadline=_extended(deadline, self.excused - mark))

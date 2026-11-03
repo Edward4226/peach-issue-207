@@ -1109,6 +1109,30 @@ def _one_card_per_release(contract: WebContract, source_code, rows: list[dict]) 
         kept.append(row)
     return kept
 
+def _name_shared_tags(contract: WebContract, aid, picked, related_tags) -> None:
+    """「标签接近」换成共同标签本身（`why_tags`，稀有的在前）。
+
+    只留两边都看得见的标签：排序用的是实体关联，被用户隐藏的标签也在里面。一个都不剩时
+    照旧写「标签接近」。"""
+    from peach.related import TAG_REASON
+
+    ids = sorted({tag for row in picked for tag in row.get("shared_tags", ())})
+    names: dict[int, str] = {}
+    if ids:
+        with contract.read_connection() as c:
+            names = dict(c.execute(
+                f"SELECT id,canonical_name FROM entity WHERE id IN ({','.join('?' * len(ids))})",
+                ids,
+            ))
+    source_tags = {tag for _asset_id, tag in con_tags(contract, [aid], "?")}
+    for row in picked:
+        visible = source_tags & set(related_tags.get(row["id"], ()))
+        shared = [names[tag] for tag in row.pop("shared_tags", ()) if names.get(tag) in visible]
+        if shared:
+            row["why_tags"] = shared[:6]
+            row["why"] = " · ".join(reason for reason in row["why"].split(" · ") if reason != TAG_REASON)
+
+
 def q_related(contract: WebContract, aid, limit=24):
     """接着看：IDF 抑制泛标签，MMR 避免近重复连续占满列表。"""
     from peach.related import rank_related
@@ -1179,6 +1203,7 @@ def q_related(contract: WebContract, aid, limit=24):
         marks = ",".join("?" * len(related_ids))
         for asset_id, tag in con_tags(contract, related_ids, marks):
             related_tags.setdefault(asset_id, []).append(tag)
+        _name_shared_tags(contract, aid, picked, related_tags)
     for d in picked:
         d["cost"] = cost_for(d['location'], d.get('path'))
         d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])

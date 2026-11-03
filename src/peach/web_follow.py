@@ -1501,6 +1501,18 @@ def q_follow_authors(contract, args) -> dict:
         offset = max(0, int(args.get("offset") or 0))
     except (TypeError, ValueError):
         offset = 0
+    rows = [row for row in contract.cached_until_changed(
+        "follow-authors", lambda: _follow_author_rows(contract), tables=FOLLOW_GROUP_TABLES)
+            if not query or query in row["k"].casefold()]
+    return {"kind": "performers", "scope": "online",
+            "items": rows[offset:offset + limit],
+            "total": len(rows),
+            "has_more": offset + limit < len(rows)}
+
+
+def _follow_author_rows(contract) -> list[dict]:
+    """整份在线作者名册，按条目数排好。要把全部条目过一遍，账本不变就一直用同一份：
+    搜索推荐每次打开都问前三位，不该每次都重数一遍。"""
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
@@ -1514,17 +1526,22 @@ def q_follow_authors(contract, args) -> dict:
                       if item.source_id in enabled and not _excluded_item(item))
         items = _unblocked_items(store, items, policy, group_authors(source_rows, alias_map))
         counts: dict[str, int] = {}
+        latest: dict[str, str] = {}
         for item in items:
             row = by_source.get(item.source_id)
             key = author_key(row, alias_map) if row is not None else ""
             if key:
                 counts[key] = counts.get(key, 0) + 1
+                when = item.published_at or item.first_seen_at or ""
+                if when > latest.get(key, ""):
+                    latest[key] = when
         grouped: dict[str, dict] = {}
         for row in source_rows:
             key = author_key(row, alias_map)
             if not key or key not in counts:
                 continue
             entry = grouped.setdefault(key, {"k": "", "key": key, "n": counts[key],
+                                             "latest": latest.get(key, ""),
                                              "entity_id": None, "avatar": "",
                                              "avatar_fallback": "", "providers": [],
                                              "_rows": []})
@@ -1556,11 +1573,7 @@ def q_follow_authors(contract, args) -> dict:
                 entry["avatar"], entry["avatar_fallback"] = entry["avatar_fallback"], ""
             rows.append(entry)
         rows.sort(key=lambda row: (-row["n"], row["k"].casefold()))
-        rows = [row for row in rows if not query or query in row["k"].casefold()]
-    return {"kind": "performers", "scope": "online",
-            "items": rows[offset:offset + limit],
-            "total": len(rows),
-            "has_more": offset + limit < len(rows)}
+    return rows
 
 
 def _csv_values(value) -> tuple[str, ...]:

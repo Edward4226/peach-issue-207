@@ -27,7 +27,7 @@ classifiers = [
 ]
 dependencies = [
   "itsdangerous==2.2.0",
-  "filelock==4.2.6",
+  "filelock==4.2.7",
   "tldextract==5.4.0",
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
@@ -70,7 +70,7 @@ peach-tray = "peach.error_reporting:tray_main"
 
 [project.optional-dependencies]
 dev = [
-    "filelock==4.2.6",
+    "filelock==4.2.7",
     "httpx2==2.16.0",
     "ruff==0.17.3",
     "seiso==0.4.0",

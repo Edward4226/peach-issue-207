@@ -805,6 +805,46 @@ describe('设计决定：控件、状态与首页顶部', () => {
     }
   });
 
+  it('搜索框空着且没聚焦时占位推荐词隔几秒换一句，聚焦、打字或组字就停', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      const input = opened.page.locator('#q');
+      const ghost = opened.page.locator('.search > .placeholderroll');
+      // 推荐词池在页面空闲时取，取到就把第一句换上去；之后每隔几秒换一句。
+      await opened.page.waitForFunction(() => document.querySelector<HTMLInputElement>('#q')?.dataset.suggestion,
+        null, { timeout: 15_000 });
+      // 第一句换上去时也走一次换句动画，等它走完再记「换之前」的那一句。
+      await ghost.waitFor({ state: 'detached', timeout: 2_000 });
+      const before = await input.getAttribute('placeholder');
+      await ghost.waitFor({ timeout: 8_000 });
+      const after = await input.getAttribute('placeholder');
+      assert.notEqual(after, before, '换句时 placeholder 没有改成新的一句');
+      assert.equal(after, await input.getAttribute('data-suggestion'), '占位字与空回车要搜的词对不上');
+      assert.equal(await input.evaluate((element) => getComputedStyle(element, '::placeholder').opacity), '0',
+        '换句的那一层在场时框里自己的占位字没有收起');
+      await ghost.waitFor({ state: 'detached', timeout: 2_000 });
+      assert.equal(await input.evaluate((element) => element.classList.contains('placeholderrolling')), false,
+        '换完之后仍压着输入框的占位字');
+
+      await ghost.waitFor({ timeout: 8_000 });
+      await input.type('新');
+      assert.equal(await ghost.count(), 0, '开始打字后换句的那一层仍盖在输入框上');
+      // 聚焦时不换句：人正对着这一句，换掉了回车搜的就不是刚看见的词。
+      await input.fill('');
+      await opened.page.waitForTimeout(6_000);
+      assert.equal(await ghost.count(), 0, '聚焦在搜索框上时占位字仍在换句');
+      await input.blur();
+      await ghost.waitFor({ timeout: 8_000 });
+      await input.evaluate((element) => element.dispatchEvent(new CompositionEvent('compositionstart', {
+        bubbles: true, data: '候',
+      })));
+      assert.equal(await ghost.count(), 0, '输入法开始组字后换句的那一层仍盖着候选字');
+    } finally {
+      await opened.close();
+    }
+  });
+
   /* 搜索框住在粘性顶栏里，永远在视口上沿；可 `html` 的 `scroll-padding-top` 把那一条
      划成「被顶栏盖住」的区域，浏览器每敲一个字就把光标往下滚一次，页面一路往回退。
      点击走鼠标坐标：定位器的 click 会先替元素滚进视口，那一下不是页面自己的行为。 */

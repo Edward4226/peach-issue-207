@@ -33,7 +33,7 @@ export function FeedNewRow({ feedNew, host, wire, act, settled }: {
     setSourceFaces([...box.current?.querySelectorAll<HTMLElement>('[data-feed-source-avatar]') ?? []]);
   }, [wire, html]);
   const click = async (event: MouseEvent<HTMLDivElement>) => {
-    const link = (event.target as Element).closest<HTMLAnchorElement>('a.feednewopen');
+    const link = (event.target as Element).closest<HTMLAnchorElement>('a.feednewopen, a.feednewall');
     if (link && actions && !event.button && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
       event.preventDefault(); actions.navigate(link.getAttribute('href')!); return;
     }

@@ -433,6 +433,37 @@ def entity_page_shape(contract, connection, entity) -> dict:
             "parts": _entity_shape_parts(contract, connection, entity_id).get(entity_id, [])}
 
 
+#: 一次最多问这么多位：搜索推荐那一栏只摆三位。
+LATEST_WORK_IDS = 20
+
+
+def q_entity_latest(contract, args) -> dict:
+    """几位实体在馆藏里发行最晚的那一部：番号与发行日，搜索推荐的人物行写成「最新作」。
+
+    只看有发行日的可见作品；同一天的按入库先后取最近的那部。没有带发行日作品的那位不在
+    结果里，页面照常只画名字。
+    """
+    ids = []
+    for part in str(args.get("ids") or "").split(","):
+        if part.strip().isdigit() and int(part) not in ids:
+            ids.append(int(part))
+    ids = ids[:LATEST_WORK_IDS]
+    if not ids:
+        return {"items": {}}
+    marks = ",".join("?" * len(ids))
+    with contract.database.read_connection() as connection:
+        rows = connection.execute(
+            "SELECT entity_id,id,code,release_date FROM (SELECT ae.entity_id entity_id,a.id id,"
+            "COALESCE(a.code,'') code,a.release_date release_date,ROW_NUMBER() OVER ("
+            "PARTITION BY ae.entity_id ORDER BY a.release_date DESC,a.first_seen DESC,a.id DESC) rn"
+            " FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id"
+            f" WHERE ae.entity_id IN ({marks}) AND a.release_date IS NOT NULL AND a.release_date<>''"
+            " AND " + VISIBLE_CATALOG_ASSET + ") WHERE rn=1", ids).fetchall()
+    return {"items": {str(row["entity_id"]): {"id": row["id"], "code": row["code"],
+                                              "release_date": str(row["release_date"])[:10]}
+                      for row in rows}}
+
+
 def q_entity_shapes(contract, args) -> dict:
     """资料页上可有可无的那几块，哪些实体有：新作那一行（`feed`）、卡底的同台艺人（`costars`）、
     页头右侧那张资料表（`facts`，ADR-0069），以及作品的 JAV 版式（`jav`）。

@@ -72,6 +72,11 @@ async function open(browser: Browser, options: {
           }) }), 0);
           return { abort: () => request.onabort?.() };
         }
+        // 共享进度的任务列表按不提供该接口的 Peach 应答，脚本退回逐页查询，不占用影片查询与提交的编号。
+        if (new URL(request.url).pathname === '/api/jav-browser/active') {
+          const timer = setTimeout(() => request.onload({ status: 404, responseText: '{}' }), 0);
+          return { abort: () => { clearTimeout(timer); request.onabort?.(); } };
+        }
         if (request.url.endsWith('/api/jav-browser/errors')) { mock.reports.push(request); return; }
         const call = { method: request.method, url: request.url, headers: request.headers,
           anonymous: request.anonymous, ...(request.data ? { data: request.data } : {}) };

@@ -16,6 +16,7 @@ import {
   fmtCount, lengthRows, mediumRows, percentOf, percentText, playedFor, prefetchStats, radialArc,
   radialBarSize, radialCeiling, radialSlices, replayRows, STATS_URL, watchNote, type StatsData,
 } from '../../src/react/stats/stats';
+import { RadialCard } from '../../src/react/stats/radial-card';
 import { StatsPage } from '../../src/react/stats/stats-page';
 
 import { actionOrder, buttonNamed, click, mount, mountRoot } from './render';
@@ -137,6 +138,38 @@ it('满圈是最长那段的 1.1 倍，圈数越多每圈越细', () => {
   expect(radialCeiling([10, 5])).toBeCloseTo(11);
   expect(radialCeiling([])).toBeCloseTo(1.1);
   expect([2, 12, 40].map(radialBarSize)).toEqual([14, 8, 4]);
+});
+
+it('指到垫到最小弧长的那一段，浮层读原始数，不读画图用的弧长', async () => {
+  // 拿掉 `ResizeObserver` 让 Recharts 按初始尺寸画；声明减少动态效果，圈直接是终态。
+  vi.stubGlobal('ResizeObserver', undefined);
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {},
+  }));
+  // 满圈 3023 × 1.1，最小弧长是它的 2%：66.506，比欧美剧情的 36 大，那一段画的是垫高的弧。
+  const rows = [
+    { name: '单人剧情', value: 3023 }, { name: '共演剧情', value: 128 },
+    { name: '欧美剧情', value: 36 }, { name: '写真', value: 198 },
+  ];
+  const host = await mount(<RadialCard title="媒体库" rows={rows} empty="" />);
+  // 每圈的底色扇区：路径头一段是 `M cx,cy-外径`，第二段弧是内径，取中间那条半径指上去。
+  const rings = [...host.querySelectorAll('path.recharts-radial-bar-background-sector')].map((path) => {
+    const [outer, inner] = [...(path.getAttribute('d') ?? '').matchAll(/A ([\d.]+),/g)].map(([, r]) => Number(r));
+    return { cx: Number(path.getAttribute('cx')), cy: Number(path.getAttribute('cy')), r: (outer! + inner!) / 2 };
+  });
+  expect(rings).toHaveLength(rows.length);
+  const tipFor = async (index: number) => {
+    const { cx, cy, r } = rings[index]!;
+    await act(async () => {
+      host.querySelector('.recharts-wrapper')!.dispatchEvent(new MouseEvent('mousemove',
+        { bubbles: true, clientX: cx, clientY: cy - r }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    const tip = host.querySelector('.recharts-tooltip-wrapper')!;
+    return [...tip.querySelectorAll('span')].map((span) => span.textContent);
+  };
+  expect(await tipFor(2)).toEqual(['欧美剧情', '36']);
+  expect(await tipFor(0)).toEqual(['单人剧情', '3,023']);
 });
 
 it('点图例把那一段钉住，读数跟着换；再点一次放开', async () => {

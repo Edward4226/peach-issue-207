@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "7cdc75c1-d208-4269-a11d-a59e149e9282", e._sentryDebugIdIdentifier = "sentry-dbid-7cdc75c1-d208-4269-a11d-a59e149e9282");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "51613070-26e8-4783-9a83-ec3787385f9d", e._sentryDebugIdIdentifier = "sentry-dbid-51613070-26e8-4783-9a83-ec3787385f9d");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -20717,14 +20717,14 @@ function $g(e, { drag: t = !1, fade: n = !0, wheel: r = !0, elastic: i = !0, dra
 		d = 0, !s.drag || t.button !== 0 || e.scrollWidth - e.clientWidth <= 1 || s.dragIgnore && (t.shiftKey || t.ctrlKey || t.metaKey || t.altKey || t.target.closest?.(s.dragIgnore)) || (t.stopPropagation(), D(), u = {
 			x: t.pageX,
 			left: e.scrollLeft
-		}, d = 0, e.style.cursor = "grabbing");
+		}, d = 0, document.documentElement.dataset.dragScrolling = "");
 	}), T(window, "mousemove", (t) => {
 		if (!u) return;
 		let n = t.pageX - u.x, r = u.left - n, i = e.scrollWidth - e.clientWidth;
 		d = Math.max(d, Math.abs(n)), e.scrollLeft = r, s.elastic && l.drag(r < 0 ? r : r > i ? r - i : 0), t.preventDefault();
 	});
 	let k = () => {
-		u && s.elastic && l.release(), u = null, e.style.cursor = "";
+		u && s.elastic && l.release(), u && delete document.documentElement.dataset.dragScrolling, u = null;
 	};
 	T(window, "mouseup", k), T(window, "blur", k), T(e, "keydown", () => {
 		d = 0;
@@ -20750,7 +20750,7 @@ function $g(e, { drag: t = !1, fade: n = !0, wheel: r = !0, elastic: i = !0, dra
 			b = "", S();
 		},
 		destroy() {
-			c.abort(), D(), cancelAnimationFrame(C), C = 0, ee.disconnect(), te.disconnect(), Ug.delete(e), delete e.dataset.scrollGesture, e.style.cursor = "", Ug.size || (Wg?.disconnect(), Wg = null);
+			c.abort(), D(), cancelAnimationFrame(C), C = 0, ee.disconnect(), te.disconnect(), Ug.delete(e), delete e.dataset.scrollGesture, u && delete document.documentElement.dataset.dragScrolling, Ug.size || (Wg?.disconnect(), Wg = null);
 		}
 	};
 	return Ug.set(e, ne), Wg || (Wg = new MutationObserver(() => {
@@ -22656,4 +22656,4 @@ E();
 var cv = document.getElementById("peach-page"), lv = cv ? sv[cv.dataset.page ?? ""] : void 0;
 cv && lv && (0, M.createRoot)(cv).render(/* @__PURE__ */ (0, z.jsx)(lv, { data: { ...cv.dataset } }));
 
-//# debugId=7cdc75c1-d208-4269-a11d-a59e149e9282
+//# debugId=51613070-26e8-4783-9a83-ec3787385f9d

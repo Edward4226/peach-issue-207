@@ -2,6 +2,7 @@ import { resolveFollowSort, SORT_OPTIONS, type SortDir, type SortKey } from './f
 import { islandButton, islandSelect } from './island-skeleton';
 import { configurationSkeleton } from './configuration-skeleton';
 import { javPageSkeleton } from './jav-skeleton';
+import { javTab } from './react/jav/jav-navigation';
 import { duplicatesSkeleton, qualityGoalsSkeleton, statsSkeleton, tasteSkeleton } from './management-skeletons';
 import { CONFIGURATION_SECTIONS } from './history/settings-route';
 import { FOLLOW_MANAGE_NAV as FOLLOW_TABS } from './react/follow-manage/manage-route';
@@ -94,7 +95,8 @@ export function boardPageSkeleton(
   if (path === '/stats') {
     body = statsSkeleton();
   } else if (path === '/jav') {
-    body = javPageSkeleton(new URLSearchParams(location.search).get('tab') === 'wants' ? 'wants' : 'discover');
+    const tab = javTab(new URLSearchParams(location.search).get('tab'));
+    body = javPageSkeleton(tab === 'library' ? 'discover' : tab);
   } else if (path === '/taste') {
     body = tasteSkeleton();
   } else if (path === '/subscriptions') {

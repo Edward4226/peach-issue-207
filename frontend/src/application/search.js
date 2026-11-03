@@ -8,11 +8,11 @@ import { followSelected, notifyShell, selectMode, selected, state } from './../s
 import { navigationState } from './navigation.js';
 import { openEntity } from './entity.js';
 import { catalogSuggestions } from './../catalog-onboarding';
-import { searchRecommendations } from '../react/search/recommendations';
+import { pendingRecommendations, searchRecommendations } from '../react/search/recommendations';
 import { feedNewCoverHtml } from './feed.js';
 import { followState, openFollowDetail } from './follow.js';
 import { $, api, esc } from '../core';
-import { dismissMenu, glideEase, presentMenu, wireHorizontalScroller } from '../ui-kit';
+import { dismissMenu, glideEase, presentMenu, rollPlaceholder, wireHorizontalScroller } from '../ui-kit';
 import { openManagedRoute } from './../history/managed';
 import { applicationEffects } from './effects';
 import { searchMorphFrames } from './search-morph.js';
@@ -86,6 +86,8 @@ searchState.searchActions = {
 searchState.searchHelpers = {
   pool:()=>catalogSuggestions(state,api),
   recommendations:()=>searchRecommendations(api),
+  pendingRecommendations,
+  rollPlaceholder:(input,next)=>rollPlaceholder(input,next),
   /* `.pic` 是卡片封面那一格（比例、底色、圆角与模糊垫底都认它），和里面那张图一起由壳给。 */
   coverHtml:card=>`<span class="pic">${card?.thumb_url
     ?`<img src="${esc(card.thumb_url)}" width="640" height="360" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`

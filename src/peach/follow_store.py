@@ -179,7 +179,7 @@ def _carry_image_dims(metadata: dict, previous_json: str | None) -> dict:
 #: published_at、group_hint 一概不动，metadata 用 `json_patch` 并进去而
 #: 不是整块替换——否则跳过第二阶段就等于把上一轮取到的细节抹掉，而抹掉之后
 #: 「详情本来就没有」和「这次没去问」在数据里长得一模一样。
-#: 时长只补空：rule34xxx 的时长读自原文件头，帖子页被限流挡回来时它照样取得到，
+#: 时长只补空：rule34xxx 的时长读自原文件头，上传时间被限流挡回来时它照样取得到，
 #: 这时候选仍是 partial，已有的时长不覆盖，空着的补上。
 _PARTIAL_UPDATE = (
     "  title=excluded.title, url=excluded.url, version=excluded.version,"
@@ -200,8 +200,8 @@ _ENRICHED_PREDICATES = {
     # kemono 系：详情页只用来判「这一帖交付了资源没有」，没有要补的列。判过保留的帖子
     # 才会落库，所以行在 ledger 里本身就是判定结果，库里有的帖子不必再探。
     "kept": "1",
-    # rule34xxx：分类只有帖子页给，时长只有原文件头给，两样都有才算补齐。只看分类的话，
-    # 时长功能上线前补过分类的行、文件头那次没读到的行，常规检查永远不会再问。
+    # rule34xxx：分类随 dapi 的 `tag_info` 到，时长只有原文件头给，两样都有才算补齐。
+    # 只看分类的话，时长功能上线前补过分类的行、文件头那次没读到的行，常规检查永远不会再问。
     "tag_types_duration": (
         "json_extract(metadata_json,'$.tag_types') IS NOT NULL"
         " AND (duration IS NOT NULL OR (lower(COALESCE(media_url,'')) NOT LIKE '%.mp4'"

@@ -575,7 +575,7 @@ describe('设计决定：作品卡、管理页与复核', () => {
       assert.ok((narrow[0]?.x || 0) >= 0 && (narrow[0]?.x || 0) + (narrow[0]?.width || 0) <= 390,
         '390px 下视频卡越出视口');
 
-      const nested = card.locator('[data-media-tag]:not(:disabled)').first();
+      const nested = card.locator('button[data-media-tag]').first();
       const tag = await nested.getAttribute('data-tag');
       assert.ok(tag, '演示卡没有可操作的内部标签');
       await nested.focus();

@@ -28,12 +28,18 @@ describe('关注与馆藏共用卡片交互', () => {
       const boxes = await opened.page.locator('[data-follow-list] > [data-follow-item]').evaluateAll(nodes =>
         nodes.slice(0, 6).map(node => {
           const card = node.getBoundingClientRect();
-          const pic = node.querySelector('[data-media-pic]')!.getBoundingClientRect();
+          const title = node.querySelector('[data-media-title]')!.getBoundingClientRect();
           const labels = node.querySelector('[data-follow-labels]')!.getBoundingClientRect();
-          return { height: card.height, left: pic.left, labels: labels.left + 4 };
+          return { height: card.height, left: title.left, labels: labels.left + 4 };
         }));
+      // 标签和首页卡一样排在文字那一栏：左缘对齐标题，不从头像底下起头。
       assert.ok(boxes.every(box => Math.abs(box.labels - box.left) <= 1), JSON.stringify(boxes));
       assert.ok(Math.max(...boxes.map(box => box.height)) - Math.min(...boxes.map(box => box.height)) <= 1, JSON.stringify(boxes));
+      // 署名行和作品卡同一份零件：作者名前是人像字形，日期前是日历字形。
+      const glyphs = await opened.page.locator('[data-follow-list] > [data-follow-item]').first().evaluate(node =>
+        ['[data-media-who]', '[data-media-release]'].map(selector =>
+          node.querySelector(`[data-media-byline] ${selector} svg use`)?.getAttribute('href')));
+      assert.deepEqual(glyphs, ['#i-user-round', '#i-calendar']);
     } finally { await opened.stub.release(); await opened.close() }
   });
 
@@ -92,7 +98,24 @@ describe('关注与馆藏共用卡片交互', () => {
       await creator.focus();
       assert.notEqual(await creator.evaluate(node => getComputedStyle(node).outlineStyle), 'none');
       await page.locator('[data-follow-related] [data-follow-item]').first().waitFor({ timeout: 15_000 });
-      const geometry = await page.locator('[data-follow-detail-actions]').evaluate(node => {
+      await page.locator('[data-follow-related] [data-follow-item]').first().hover();
+      const hovered = await page.locator('[data-follow-related]').evaluate(section => {
+        const row = section.querySelector('[data-related-row]')!.getBoundingClientRect();
+        const card = section.querySelector('[data-follow-item]')!;
+        const box = card.getBoundingClientRect();
+        const inside = [...card.querySelectorAll('*')].every(node => {
+          const rect = node.getBoundingClientRect();
+          return !rect.height || rect.bottom <= box.bottom + 0.5;
+        });
+        return {
+          inside, top: box.top - 8 >= row.top - 0.5, bottom: box.bottom + 8 <= row.bottom + 0.5,
+          fill: getComputedStyle(card, '::before').backgroundColor, ground: getComputedStyle(section).backgroundColor,
+        };
+      });
+      assert.deepEqual([hovered.inside, hovered.top, hovered.bottom], [true, true, true],
+        '接着看的卡片内容与悬停面不越过横排的裁切边');
+      assert.notEqual(hovered.fill, hovered.ground, '悬停面和接着看底色同色，浅色主题下看不出悬停');
+      const geometry =await page.locator('[data-follow-detail-actions]').evaluate(node => {
         const styles = [...node.querySelectorAll('button, a')].map(button => {
           const style = getComputedStyle(button);
           return [style.width, style.height, style.borderRadius];

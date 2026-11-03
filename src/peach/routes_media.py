@@ -79,13 +79,18 @@ def _asset_root(state) -> Path:
     return Path(state.settings.candidate_root) / follow_assets.ROOT_NAME
 
 
-def _asset_response(request: Request, path: Path | None):
+def _asset_response(request: Request, path: Path | None, *, placeholder: bool = True):
     """这些端点只出现在 `<img src>` 里，所以取不到时回的是占位图而不是 JSON：
 
-    错误正文对 `<img>` 毫无意义，只会留下一个碎图。状态码仍然是 404，
-    前端据此把 `<img>` 摘掉、换成站名或首字母。
+    错误正文对 `<img>` 毫无意义，只会留下一个碎图。状态码仍然是 404。
+
+    浏览器照样把 404 带的占位图当成加载成功，`error` 不触发。头像后面有一条兜底链
+    （归档站那张，再到首字母，`data-fallbacks`／`data-drop`），占位图会把它整条截住，
+    圆框里留一枚播放键：头像传 `placeholder=False`，404 不带图，`<img>` 报错走下一环。
     """
     if path is None:
+        if not placeholder:
+            return Response(status_code=404, headers={"cache-control": "no-store"})
         return Response(PLACEHOLDER_IMAGE, status_code=404,
                         media_type=PLACEHOLDER_CONTENT_TYPE,
                         headers={"cache-control": "no-store"})
@@ -850,7 +855,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
     if provider:
         target = follow_assets.mirror_avatar_url(provider, ref)
         if target is None:
-            return _asset_response(request, None)
+            return _asset_response(request, None, placeholder=False)
         key = f"mirror:{provider}:{ref}"
 
         def fetch():
@@ -859,7 +864,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
         # 名片上的 X、Patreon 与 pixiv：每家取到能用的最大一档，几家之间留像素最多的那张。
         identities = profile_identities(id)
         if not identities:
-            return _asset_response(request, None)
+            return _asset_response(request, None, placeholder=False)
         key = f"official:profile:{id}"
 
         def fetch():
@@ -875,7 +880,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
         # FANBOX 创作者 id（`jul3dnsfw.fanbox.cc`）。两种的合法形状都由
         # `resolve_official_avatar` 把关，这里只挡住明显不是身份的串。
         if service != "fanbox" or not _FANBOX_IDENTITY_RE.fullmatch(id):
-            return _asset_response(request, None)
+            return _asset_response(request, None, placeholder=False)
         key = f"official:{service}:{id}"
 
         def fetch():
@@ -886,7 +891,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
             return follow_assets.fetch_image(client, resolved)
     path = follow_assets.cached_image(_asset_root(state), "avatars", key,
                                       AVATAR_REFRESH_SECONDS, fetch)
-    return _asset_response(request, path)
+    return _asset_response(request, path, placeholder=False)
 
 
 @router.api_route("/source-icon", methods=["GET", "HEAD"])

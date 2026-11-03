@@ -1485,6 +1485,18 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(row["k"], "LazyProcrastinator")
         self.assertEqual(sorted(row["providers"]), ["rule34video", "rule34xxx"])
 
+    def test_the_online_roster_carries_each_authors_latest_post_and_follows_new_items(self):
+        """搜索推荐写「最新更新于」读的就是这一格；名册按账本缓存，新条目进来就得重数。"""
+        self._seed(ref="a", label="Author A", candidates=(
+            self._clip("a1", published_at="2026-03-01T00:00:00Z"),
+            self._clip("a2", published_at="2026-05-02T08:00:00Z")))
+        row = self._get("/api/follow/authors")["items"][0]
+        self.assertEqual((row["n"], row["latest"]), (2, "2026-05-02T08:00:00Z"))
+        self._seed(ref="a", label="Author A", candidates=(
+            self._clip("a3", published_at="2026-06-03T00:00:00Z"),))
+        row = self._get("/api/follow/authors")["items"][0]
+        self.assertEqual((row["n"], row["latest"]), (3, "2026-06-03T00:00:00Z"))
+
     def test_the_online_roster_supports_search_and_paging(self):
         """形状与 /api/index 一致：艺人页的分页、过滤和「载入更多」换个地址就能用。"""
         self._seed(ref="a", label="Author A", candidates=(self._clip("a1"),))

@@ -1,13 +1,18 @@
 """社区来源的解析与封面比对：AVBase、JavBus、javdb 各自的页面形状，以及图源印证与只有一个图源时的退路。"""
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+import httpx
 from PIL import Image
 
 from peach.community_catalog import COMMUNITY_SOURCES, IMAGE_LIMIT, community_sources_for, verified_cover
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import Candidate, NotFound, Unavailable, _fetch
+from peach.scraping_access import SourcePaused
 from peach.sources import (SITE_SOURCES, AVBaseSource, FailureReason, JavBusSource, JavDBSource, Page, Session,
                            SourceFailure)
 from peach.sources.javdb import actresses as javdb_actresses
@@ -312,6 +317,61 @@ class VerifiedCoverTests(unittest.TestCase):
         works = [("avbase", {"cover_urls": []}), ("javdb", {"cover_urls": [JAVDB_COVER]})]
         with self.assertRaisesRegex(NotFound, '无 JavDB 水印'):
             verified_cover(serve({JAVDB_COVER: gradient(800, 534)}), "IPX-060", works)
+
+    def test_a_picture_cut_off_on_the_network_keeps_the_answer_retryable(self):
+        """#342：JavBus 那张断在连接、5xx 或冷却上时，剩下的 javdb 图凑不成答复，不能当「没有」记一周。"""
+        works = [("javbus", {"cover_urls": [JAVBUS_COVER]}), ("javdb", {"cover_urls": [JAVDB_COVER]})]
+        pages = {JAVBUS_COVER: gradient(800, 538), JAVDB_COVER: gradient(800, 534)}
+
+        def failing(failure, pages=pages):
+            def call(request, timeout, limit):
+                if request.url == JAVBUS_COVER:
+                    if isinstance(failure, int):
+                        return HttpResponse(failure, {}, b"", request.url)
+                    raise failure
+                return serve(pages)(request, timeout, limit)
+            return call
+
+        conflicting = {**pages, JAVBUS_COVER: gradient(800, 538, rising=False),
+                       DMM_COVER: gradient(800, 538, rising=False)}
+        failures = ((httpx.ConnectError("proxy down"), Unavailable), (httpx.ReadTimeout("read timeout"), Unavailable),
+                    (503, Unavailable), (404, Unavailable), (SourcePaused("来源正在冷却"), SourcePaused))
+        for failure, expected in failures:
+            with self.subTest(failure=failure), patch("peach.jav_cover_fetch.time.sleep"):
+                # 只剩 javdb 带水印的那张；或另两家各给一张对不上：没下到的 JavBus 那张都可能改变结论。
+                for served, answered, reason in (
+                        (pages, works, "^未取得无 JavDB 水印的封面"),
+                        (conflicting, [*works, ("avbase", {"cover_urls": [DMM_COVER]})], "^dmm、javdb 给的封面不是同一张图")):
+                    with self.assertRaisesRegex(expected, reason + ".*；另有 1 张封面没下载到$") as caught:
+                        verified_cover(failing(failure, served), "ABW-358", answered)
+                    self.assertNotIsInstance(caught.exception, NotFound)
+                # 下到的图全出自一个图源时照旧用它：别家那张没下到不挡已经能用的封面。
+                candidate, _size, _data, origins = verified_cover(
+                    failing(failure, {DMM_COVER: gradient(800, 538)}), "ABW-358",
+                    [works[0], ("avbase", {"cover_urls": [DMM_COVER]})])
+                self.assertEqual((candidate.url, origins), (DMM_COVER, ()))
+        with self.assertRaisesRegex(NotFound, "无 JavDB 水印"):
+            verified_cover(serve(pages), "ABW-358", [("javbus", {"cover_urls": []}), works[1]])
+
+    def test_a_site_cut_off_while_another_answers_keeps_the_cover_retryable(self):
+        """#342：JavBus 作品页断线、AVBase 说没有、javdb 答上；只剩 javdb 带水印的图，不是「来源没有封面」。"""
+        from peach.library_processing import LibraryMetadataProvider
+        pages = {JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE, JAVDB_COVER: gradient(800, 534)}
+
+        def transport(request, timeout, limit):
+            if request.url == JAVBUS_WORK:
+                raise httpx.ConnectError("proxy down")
+            return serve(pages)(request, timeout, limit)
+
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = transport
+        covers = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        with patch("peach.jav_cover_fetch.time.sleep"), \
+                patch("peach.jav_cover_fetch.best_cover", side_effect=NotFound("所有渠道都没有候选")), \
+                self.assertRaisesRegex(Unavailable, "JavBus") as caught:
+            provider.cover("ABW-358", covers)
+        self.assertNotIsInstance(caught.exception, NotFound)
+        self.assertFalse((covers / "ABW-358.jpg").exists())
 
     def test_a_small_official_cover_counts_as_the_second_origin(self):
         works = [("javdb", {"cover_urls": [JAVDB_COVER]})]

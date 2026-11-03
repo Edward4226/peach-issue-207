@@ -1,7 +1,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "d74bc9bc-ce18-4303-b11a-c29a44b68728", e._sentryDebugIdIdentifier = "sentry-dbid-d74bc9bc-ce18-4303-b11a-c29a44b68728");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "994f0254-5425-4c98-9acd-e046d82c113a", e._sentryDebugIdIdentifier = "sentry-dbid-994f0254-5425-4c98-9acd-e046d82c113a");
 	} catch {}
 })();
 import { AnimatedItems as e, CHART_CARD as t, CHART_COLORS as n, Cell as r, ChartBackground as i, ChartContainer as a, ChartEmpty as o, ChartLegend as s, ChartLegendContent as c, ChartTip as l, ChartTooltip as u, ChartTooltipContent as d, DefaultZIndexes as f, LabelListFromLabelProp as p, Layer as m, LoadingIndicator as h, PolarChart as g, PolarLabelListContextProvider as _, RegisterGraphicalItemId as v, Sector as y, SetPolarGraphicalItem as b, SetPolarLegendPayload as x, SetTooltipEntrySettings as S, Shape as C, ZIndexLayer as w, adaptEventsOfChild as T, arrayTooltipSearcher as E, combineAllBarPositions as ee, combineBarPosition as D, combineBarSizeList as te, combineDisplayedStackedData as ne, combineStackGroups as re, combineStackedData as ie, createSelector as O, defaultPolarChartProps as ae, findAllByType as oe, getBandSizeOfAxis as k, getBaseValueOfBar as se, getCateCoordinateOfBar as ce, getColorsCount as le, getNormalizedStackId as ue, getTooltipNameProp as de, getValueByDataKey as fe, getZIndexFromUnknown as pe, interpolate as me, isCategoricalAxis as he, isNullish as ge, isStacked as _e, matchAppend as ve, mathSign as ye, noop as be, resolveDefaultProps as xe, selectActiveTooltipIndex as Se, selectAngleAxis as Ce, selectBarCategoryGap as we, selectBarGap as Te, selectChartDataAndAlwaysIgnoreIndexes as Ee, selectChartDataWithIndexes as De, selectChartLayout as A, selectPolarItemsSettings as Oe, selectPolarViewBox as ke, selectRadiusAxis as Ae, selectReverseStackOrder as je, selectRootBarSize as Me, selectRootMaxBarSize as Ne, selectStackOffsetType as Pe, selectTooltipAxis as Fe, selectUnfilteredPolarItems as Ie, sliceConfig as Le, sliceKey as Re, svgPropertiesNoEvents as ze, svgPropertiesNoEventsFromUnknown as Be, truncateByDomain as Ve, useAnimationCallbacks as He, useAppSelector as j, useMouseClickItemDispatch as Ue, useMouseEnterItemDispatch as We, useMouseLeaveItemDispatch as Ge, usePolarChartLayout as Ke } from "./peach-app.chart-tip-CRxYp6KT.js";
@@ -803,7 +803,7 @@ function mr({ title: e, rows: n, empty: r, unit: i = "个视频" }) {
 	});
 	let f = c >= 0 ? c : a, p = d.reduce((e, t) => e + t.value, 0), m = d[f], h = (e) => s((t) => t === e ? -1 : e), g = Ct(d.map((e) => e.value)), _ = d.map((e, t) => ({
 		slice: Re(t),
-		value: e.value,
+		count: e.value,
 		arc: xt(e.value, g)
 	}));
 	return /* @__PURE__ */ (0, Y.jsxs)("section", {
@@ -850,7 +850,7 @@ function mr({ title: e, rows: n, empty: r, unit: i = "个视频" }) {
 						}
 					}), /* @__PURE__ */ (0, Y.jsx)(l, {
 						nameKey: "slice",
-						valueKey: "value",
+						valueKey: "count",
 						hideLabel: !0
 					})]
 				})
@@ -1473,4 +1473,4 @@ function Vr(e) {
 }
 export { Vr as StatsPage };
 
-//# debugId=d74bc9bc-ce18-4303-b11a-c29a44b68728
+//# debugId=994f0254-5425-4c98-9acd-e046d82c113a

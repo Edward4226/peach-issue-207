@@ -144,6 +144,36 @@ class WebDataTests(unittest.TestCase):
         rm_web.w_batch(self.contract, {"ids": [1], "operation": "dispose", "disposal_reason": None})
         self.assertIsNone(self.row()["disposal_reason"])
 
+    def test_latest_work_is_the_newest_visible_release_of_each_entity(self):
+        """搜索推荐的「最新作」：发行日最晚的可见作品；进了回收站的、没有发行日的不算。"""
+        with closing(sqlite3.connect(self.db_path)) as con, con:
+            con.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,size,code,release_date,disposal,first_seen) "
+                "VALUES(?,'local',?,?,'video',1,?,?,?,'2026-08-15')",
+                [(21, r"R:\\Media\\new.mp4", "new.mp4", "ABC-009", "2026-05-01", None),
+                 (22, r"R:\\Media\\gone.mp4", "gone.mp4", "ABC-010", "2026-07-01", "trash"),
+                 (23, r"R:\\Media\\bare.mp4", "bare.mp4", "ABC-011", None, None)])
+            con.execute("UPDATE asset SET release_date='2025-01-02' WHERE id=1")
+            con.executemany("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                            "VALUES(?,11,'performer','test',1.0)", [(21,), (22,), (23,)])
+        latest = rm_web.dispatch_api_get(self.contract, "/api/entity/latest", {"ids": "11,12,13,x"})["items"]
+        self.assertEqual(latest["11"], {"id": 21, "code": "ABC-009", "release_date": "2026-05-01"})
+        # 厂牌 13 也挂在 1 号上；没问到的 10 号标签不在结果里。
+        self.assertEqual(latest["13"], {"id": 1, "code": "ABC-001", "release_date": "2025-01-02"})
+        self.assertEqual(sorted(latest), ["11", "12", "13"])
+        self.assertEqual(rm_web.dispatch_api_get(self.contract, "/api/entity/latest", {})["items"], {})
+
+    def test_search_recommendations_bundle_every_group_in_one_read(self):
+        """搜索推荐一个请求取齐五份：作品照 `/api/items` 的口径，关注那份不带推荐栏用不上的筛选项，
+        占位推荐词取自馆藏作品的番号与署名。"""
+        bundle = rm_web.dispatch_api_get(self.contract, "/api/search/recommendations", {})
+        self.assertEqual(set(bundle), {"items", "jav", "follow", "feeds", "authors", "latest", "words"})
+        self.assertEqual({row["id"] for row in bundle["items"]["items"]}, {1, 2})
+        if bundle["follow"] is not None:
+            self.assertNotIn("facets", bundle["follow"])
+        self.assertIn("ABC-001", bundle["words"])
+        self.assertTrue(all(len(word) > 1 for word in bundle["words"]))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = str(fresh_ledger(self.tmp.name))
@@ -1516,11 +1546,11 @@ class WebDataTests(unittest.TestCase):
             "/api/media-processing",
             "/api/thumbnail-jobs", "/api/timeline", "/api/media-repair",
             "/api/scraping", "/api/scraping/cover", "/api/scraping/amane-bridge",
-            "/api/items", "/api/item", "/api/entity", "/api/entity/shapes", "/api/photos", "/api/photo-set",
+            "/api/items", "/api/item", "/api/entity", "/api/entity/shapes", "/api/entity/latest", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/suggest",
-            "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
+            "/api/search-history", "/api/search/recommendations", "/api/review", "/api/playlists", "/api/playlist",
             "/api/post-setup-tutorial",
             "/api/tutorial-progress", "/api/performer/delete-candidates", "/api/performer/delete-plan",
             "/api/library-shortcuts", "/api/folders",
@@ -1535,7 +1565,7 @@ class WebDataTests(unittest.TestCase):
             "/api/feeds/schedule",
             "/api/downloads", "/api/resources/search",
             "/api/wants", "/api/wants/magnets",
-            "/api/jav/detail", "/api/jav/reviews", "/api/jav/resources", "/api/jav/discoveries",
+            "/api/jav/detail", "/api/jav/reviews", "/api/jav/resources", "/api/jav/discoveries", "/api/jav/releases",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/tag-management", "/api/tag-management/preview", "/api/follow/tag",
@@ -2135,6 +2165,27 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(self.row(1)["disposal"], "trash")
         with self.assertRaises(ValueError):
             rm_web.w_batch(self.contract, {"ids": list(range(201)), "operation": "seen"})
+
+    def test_related_reason_names_shared_tags_the_user_can_see(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(14,'tag','痴女','痴女','2026-01-01','2026-01-01')")
+        con.executemany("INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,?)",
+                        [(1, "痴女", "name"), (2, "足交", "name"), (2, "痴女", "name")])
+        con.executemany("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(?,?,'tag','test',1.0)", [(1, 14), (2, 10), (2, 14)])
+        con.commit()
+        con.close()
+
+        first = rm_web.q_related(self.contract, 1, 10)["items"][0]
+        self.assertEqual((first["why"], first["why_tags"]), ("同创作者", ["足交", "痴女"]))
+        # 用户在对面那部上隐藏的标签不拿来当理由；一个都不剩时退回「标签接近」。
+        rm_web.w_item_tag(self.contract, {"id": 2, "operation": "remove", "tag": "足交"})
+        first = rm_web.q_related(self.contract, 1, 10)["items"][0]
+        self.assertEqual(first["why_tags"], ["痴女"])
+        rm_web.w_item_tag(self.contract, {"id": 2, "operation": "remove", "tag": "痴女"})
+        first = rm_web.q_related(self.contract, 1, 10)["items"][0]
+        self.assertEqual((first["why"], "why_tags" in first), ("同创作者 · 标签接近", False))
 
     def test_top_lists_and_related_items_use_canonical_entities(self):
         tops = rm_web.q_tops(self.contract, 10)

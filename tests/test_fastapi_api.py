@@ -70,7 +70,6 @@ if HAS_DEPS:
     from peach import routes_auth
     from peach import routes_jav_browser
     from peach.api import create_app
-    from peach.follow_covers import PLACEHOLDER_CONTENT_TYPE
     from peach.follow_secrets import credential_store_for
     from peach.config import PeachSettings
 
@@ -830,18 +829,20 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/webp")
         self.assertEqual(hits, ["https://kemono.cr/icons/fanbox/30917150"])
-        # 没有实测过头像端点的来源、缺 ref 或身份形状不对的请求都不出网，直接给占位图。
+        # 没有实测过头像端点的来源、缺 ref 或身份形状不对的请求都不出网，直接回 404。
+        # 404 不带占位图：浏览器会把占位图当成加载成功，页面上的兜底链（归档站头像、首字母）就走不下去。
         for query in ("provider=rule34video&ref=1", "provider=kemono&ref=noslash",
                       "service=fanbox&id=not.a.creator", "service=patreon&id=1",
                       "service=profile&id=twitter:../x", "service=profile&id=fanbox:1"):
             missing = await self.client.get(f"/follow-avatar?t=secret&{query}")
             self.assertEqual(missing.status_code, 404, query)
-            self.assertEqual(missing.headers["content-type"], PLACEHOLDER_CONTENT_TYPE, query)
+            self.assertEqual(missing.content, b"", query)
         self.assertEqual(len(hits), 1)
         # 字母加连字符是合法的 FANBOX 创作者 id：去官方查一次，走的是应用那条 client；
-        # 回来的不是资料 JSON，就给占位图，不再往别处取。
+        # 回来的不是资料 JSON，就回 404，不再往别处取。
         unknown = await self.client.get("/follow-avatar?t=secret&service=fanbox&id=not-a-number")
         self.assertEqual(unknown.status_code, 404)
+        self.assertEqual(unknown.content, b"")
         self.assertEqual(hits[1:], ["https://api.fanbox.cc/creator.get?creatorId=not-a-number"])
 
     async def test_profile_avatars_keep_the_sharpest_of_x_and_patreon(self):

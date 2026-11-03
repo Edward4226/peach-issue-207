@@ -1618,7 +1618,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(self.scrape_codes.SETTLED_ERROR_KINDS, frozenset({"not_found"}))
 
     def test_rule34_detail_backfill_reuses_the_connector_and_is_resumable(self):
-        """标签类型、上传时间在帖子页上，视频时长在原文件头里，存量行靠常规检查补不到。
+        """标签类型、上传时间要另问 dapi，视频时长在原文件头里，存量行靠常规检查补不到。
 
         抓取判据不重写，直接复用连接器的 `_detail` 与 `_video_seconds`；备份先做、
         分批提交，续跑只跳过上一趟真正写入的条目。
@@ -1646,6 +1646,9 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual([row["external_id"] for row in pending], ["18622796", "18622794"])
         self.assertEqual([row["external_id"] for row in backfill.pending_rows(connection, 0, {1})],
                          ["18622794"])
+        # 只补类型时只挑还没有非空类型的条目，空表与缺键一样算缺。
+        self.assertEqual([row["external_id"] for row in backfill.pending_rows(
+            connection, 0, missing_types=True)], ["18622794"])
 
         # 只补不抹：已有的类型与时长不覆盖，帖子页没给上传时间就不动它。
         typed, untyped = pending
@@ -1673,7 +1676,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(backfill.written_ids(out), {2})
 
     def test_rule34_duration_only_backfill_touches_nothing_but_empty_durations(self):
-        """授权只覆盖时长时：只挑缺时长的 mp4，不问帖子页，只写 `duration`。"""
+        """授权只覆盖时长时：只挑缺时长的 mp4，不问 dapi，只写 `duration`。"""
         backfill = load_script("backfill_rule34_details")
         database = self.tmp_ledger()
         seeding = sqlite3.connect(database)
@@ -1690,7 +1693,7 @@ class OperationalScriptTests(unittest.TestCase):
 
         class Connector:
             def _detail(self, post_id):
-                raise AssertionError("只补时长不该打帖子页")
+                raise AssertionError("只补时长不该问 dapi")
 
             def _video_seconds(self, url):
                 heads.append(url)
@@ -1774,6 +1777,24 @@ class OperationalScriptTests(unittest.TestCase):
                                    "harry potter (harry potter)": "character"}})
         self.assertEqual(json.loads(rows[2]), {"tags": []})
         self.assertEqual(backfill.settled_ids(out), {1})
+
+    def test_rule34_backfill_without_credentials_stops_before_the_backup(self):
+        """分类与上传时间要问 dapi，dapi 要账号凭据；缺凭据就在备份与写入之前停。"""
+        backfill = load_script("backfill_rule34_details")
+        database = self.tmp_ledger()
+        backup = database.parent / "b.db"
+        store = mock.Mock()
+        store.load.return_value = None
+        args = backfill.build_parser().parse_args(
+            ["--db", str(database), "--apply", "--backup", str(backup),
+             "--out", str(database.parent / "r.csv"), "--delay", "0"])
+        with mock.patch.object(backfill, "credential_store_for", return_value=store), \
+                mock.patch.object(backfill, "build_connector") as build, \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(backfill.run(args), 2)
+        store.load.assert_called_once_with("rule34xxx")
+        build.assert_not_called()
+        self.assertFalse(backup.exists())
 
     def test_follow_image_dims_backfill_reads_archives_first_and_probes_headers_for_the_rest(self):
         """图片墙的比例占位要每张图都有宽高；存量行里只有 fanbox 记过。

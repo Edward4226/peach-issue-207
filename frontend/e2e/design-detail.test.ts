@@ -815,10 +815,7 @@ describe('设计决定：关注详情、作品详情、播放器与侧栏', () =
     await opened.page.reload({ waitUntil: 'load' });
     await opened.page.locator('#drawer [data-sidebar-group="时长"]').waitFor({ state: 'attached', timeout: 15_000 });
     await settle(opened.page);
-    return { ...opened, close: async () => {
-      await opened.page.unrouteAll({ behavior: 'ignoreErrors' });
-      await opened.close();
-    } };
+    return opened;
   }
 
   it('侧栏当前项自己不铺底，由挂在抽屉上的那块玻璃标出；悬停时玻璃跟过去，离开这一列回到当前项', { timeout: 60_000 }, async () => {

@@ -108,6 +108,7 @@ _OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 #: 资源的楼层各自成组；这条口径登记在 `follow_providers`，不在这里点名站点。
 _RELEASE_KEY_PER_POST = follow_providers.release_key_per_post()
 _SEQUENTIAL_UPLOADS = follow_providers.sequential_upload_providers()
+_SITE_WIDE_CHARACTERS = follow_providers.site_wide_character_providers()
 
 #: 完整候选（列表 + 详情都取到了）更新已有行时用的 SET 子句。
 _FULL_UPDATE = (
@@ -488,6 +489,11 @@ class FollowStore:
                 updated += 1
             else:
                 added += 1
+        if fetch.provider in _SITE_WIDE_CHARACTERS:
+            self._promote_characters(fetch.provider, {
+                str(tag) for candidate in fetch.candidates if not candidate.partial
+                for tag, kind in (candidate.extra.get("tag_types") or {}).items()
+                if kind == "character"})
         if not complete:
             return RecordOutcome(source_id, len(fetch.candidates), added, updated)
         if page:
@@ -505,6 +511,42 @@ class FollowStore:
                 (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
         return RecordOutcome(source_id, len(fetch.candidates), added, updated,
                              evidence_path=evidence, evidence_error=evidence_error)
+
+    def _promote_characters(self, provider: str, characters: set[str]) -> int:
+        """同站旧条目里记成 general 的同名标签改记 character，返回改了几行。
+
+        详情页探过的行不再重探，站方事后把标签改成角色时，只有新条目会记上。
+        这里只往 character 改、不往回改：一页没解析出角色分组时全是 general，
+        拿它去降级旧行，会把一次改版或一页残缺扩散到整站。跨来源也改：同一个角色
+        常出现在不同作者的作品里。
+        """
+        if not characters:
+            return 0
+        connection = self._connect()
+        rows = connection.execute(
+            "SELECT i.id, i.metadata_json FROM follow_item i"
+            " JOIN follow_source s ON s.id=i.source_id WHERE s.provider=?"
+            " AND json_extract(i.metadata_json,'$.tag_types') IS NOT NULL",
+            (provider,)).fetchall()
+        changed = 0
+        for item_id, raw in rows:
+            try:
+                metadata = json.loads(raw or "{}")
+            except ValueError:
+                continue
+            types = metadata.get("tag_types") if isinstance(metadata, dict) else None
+            if not isinstance(types, dict):
+                continue
+            promoted = {tag: "character" for tag in characters
+                        if types.get(tag) == "general"}
+            if not promoted:
+                continue
+            connection.execute(
+                "UPDATE follow_item SET metadata_json=? WHERE id=?",
+                (json.dumps({**metadata, "tag_types": {**types, **promoted}},
+                            ensure_ascii=False), item_id))
+            changed += 1
+        return changed
 
     def _replace_candidate_profile_links(
         self,

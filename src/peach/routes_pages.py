@@ -19,6 +19,7 @@ import gzip
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 import threading
 from collections import OrderedDict
@@ -43,7 +44,8 @@ from .config import PROJECT_ROOT
 from .diagnostic_browser import BUNDLE_CHUNK_NAME
 from .entities import resolve_entity, resolve_entity_id
 from .media_libraries import LIBRARY_ICONS
-from .routes_auth import query_auth_redirect, require_asset_auth, require_page_auth, set_auth_cookie
+from .routes_auth import (origin_allowed, query_auth_redirect, require_asset_auth, require_page_auth,
+                          set_auth_cookie)
 from .web_entry import page_shell, runtime_fact_entries
 from .web_state import FAVICON
 
@@ -311,6 +313,13 @@ def index(request: Request, args: dict[str, str] = Depends(require_page_auth)):
     editor = "edit" in request.query_params and _copy_editor_available()
     from .client_updates import runtime_identity
     html = settings.page_path.read_text(encoding="utf-8")
+    from .web_tutorial import q_tutorial_progress
+    try:
+        if q_tutorial_progress(request.app.state.web_contract)['completed']:
+            html = html.replace('id="tutorialBtn"', 'id="tutorialBtn" hidden', 1)
+    except sqlite3.Error:
+        # 账本不可读时仍可进入配置；教程客户端保留“未取得状态”的提示与重试入口。
+        pass
     entries = {'peach-client-runtime': runtime_identity()}
     if shape is not None:
         entries['peach-entity-shape'] = shape
@@ -412,7 +421,8 @@ def _setup_guard(request: Request, *, submit: bool) -> None:
     形态各不相同因为原因各不相同：已经配置过的机器上这些端点根本不存在（404，不是
     「禁止」——把它做成一条可探测的 403 等于对外宣告这里有个初始化入口）；非回环调用方是
     403（引导服务只绑 127.0.0.1，能走到这里说明有人转发了它）；独立包认地址栏里的主机名，
-    不是回环写法也是 403。提交再看 Origin：从别的页面发来的表单不收。
+    不是回环写法也是 403。提交再按 `origin_allowed` 看来源：从别的页面发来的表单不收，
+    隧道地址在首启时不算本机。
     """
     settings = request.app.state.settings
     if settings.configured:
@@ -424,8 +434,7 @@ def _setup_guard(request: Request, *, submit: bool) -> None:
         raise HTTPException(status_code=403, detail="请使用本机地址打开设置")
     if not submit:
         return
-    origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+    if not origin_allowed(request, guard="setup", tunnels=False):
         raise HTTPException(status_code=403, detail="请从 Peach 设置页提交")
 
 
@@ -971,6 +980,12 @@ def entity_route(request: Request, name: str,
 @router.api_route("/review", methods=["GET", "HEAD"])
 @router.api_route("/taste", methods=["GET", "HEAD"])
 @router.api_route("/data-cleanup", methods=["GET", "HEAD"])
+@router.api_route("/data-cleanup/organize", methods=["GET", "HEAD"])
+@router.api_route("/data-cleanup/resource-sync", methods=["GET", "HEAD"])
+@router.api_route("/data-cleanup/orphan-records", methods=["GET", "HEAD"])
+@router.api_route("/data-cleanup/media-repair", methods=["GET", "HEAD"])
+@router.api_route("/data-cleanup/links", methods=["GET", "HEAD"])
+@router.api_route("/data-cleanup/batch-delete", methods=["GET", "HEAD"])
 @router.api_route("/duplicates", methods=["GET", "HEAD"])
 @router.api_route("/quality-goals", methods=["GET", "HEAD"])
 # 任务中心那一屏（island），数据走 `/api/tasks`。深链要能直接打开：定时任务被挡下时

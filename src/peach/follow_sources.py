@@ -1521,6 +1521,13 @@ class Rule34VideoConnector(_BaseConnector):
         if not video and not tags and not categories and not models:
             return {}
         tag_types = {tag: "general" for tag in tags}
+        # 角色和普通标签是同一种 `a.tag_item`，只有外层分组不同：站方把角色单列在
+        # 标题为 Characters 的 `.vp-group--characters` 里。2026-11-03 实测 4708183、
+        # 4708408 有这一组；4707928 没有，`d.mon (overwatch)` 列在 Tags 组，照记 general。
+        for node in soup.select('.vp-group--characters a.tag_item[href*="/tags/"]'):
+            character = plain_text(node.get_text(" "))
+            if character in tag_types:
+                tag_types[character] = "character"
         for category in categories:
             tag_types[category] = (
                 "metadata" if category.casefold() in {"2d", "3d"} else "copyright")

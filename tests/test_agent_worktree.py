@@ -85,7 +85,7 @@ class _WorktreeCase(unittest.TestCase):
         if self.mock_pull_request:
             pull_request = mock.patch.object(agent_worktree, "require_pull_request", side_effect=
                 lambda worker, branch, target, head: {"url": "https://github.com/example/peach/pull/1",
-                                                      "head": head, "base": target})
+                                                      "head": head, "base": target, "refs": []})
             pull_request.start()
             self.addCleanup(pull_request.stop)
         self.tmp = tempfile.TemporaryDirectory()
@@ -263,11 +263,27 @@ class PullRequestIntegrationTests(_WorktreeCase):
     def test_open_matching_pull_request_is_bound_to_the_merge(self):
         with self.github() as query:
             result = integrate(self.repo, self.branch)
-        self.assertEqual(result["pull_request"], {"url": self.pr["url"], "head": self.head, "base": "master"})
+        self.assertEqual(result["pull_request"],
+                         {"url": self.pr["url"], "head": self.head, "base": "master", "refs": []})
         self.assertEqual((self.repo / "worker.txt").read_text(encoding="utf-8"), "worker\n")
         command = query.call_args.args[0]
         self.assertEqual(command[:4], ["gh", "pr", "view", self.branch])
         self.assertEqual(query.call_args.kwargs["cwd"], self.worker)
+        self.assertEqual(_git(self.repo, "log", "-1", "--format=%B").stdout.strip(),
+                         f"Merge branch '{self.branch}' (#12)")
+
+    def test_issue_link_lines_in_the_body_follow_into_the_merge_commit(self):
+        body = ("排查记录里顺带提到 #3，不算关联。\n\nRefs #45\r\n"
+                "  Refs peach-mitao/peach-roadmap#7\n"
+                "Fixes https://github.com/example/peach/issues/8\n"
+                "Refs N01（Telegram 反馈）\n")
+        with self.github(json.dumps({**self.pr, "body": body})):
+            result = integrate(self.repo, self.branch)
+        refs = ["Refs #45", "Refs peach-mitao/peach-roadmap#7",
+                "Fixes https://github.com/example/peach/issues/8"]
+        self.assertEqual(result["pull_request"]["refs"], refs)
+        self.assertEqual(_git(self.repo, "log", "-1", "--format=%B").stdout.strip(),
+                         f"Merge branch '{self.branch}' (#12)\n\n" + "\n".join(refs))
 
     def test_an_older_remote_head_and_another_base_are_refused(self):
         for field, value, message in (("headRefOid", "0" * 40, "提交.*不一致"),
@@ -793,7 +809,7 @@ class IntegrationVersionTests(_WorktreeCase):
         self.assertEqual(report["version"], "0.7.14")
         self.assertEqual(read_version(self.repo), "0.7.14")
         self.assertEqual(_git(self.repo, "log", "-1", "--format=%s").stdout.strip(),
-                         f"Merge branch '{branch}'")
+                         f"Merge branch '{branch}' (#1)")
         touched = _lines(_git(self.repo, "show", "--name-only", "--format=", "HEAD"))
         self.assertNotIn("src/peach/__init__.py", touched)
 

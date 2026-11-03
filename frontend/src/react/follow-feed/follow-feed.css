@@ -270,7 +270,6 @@
   gap: 24px;
 }
 .peach-react [data-follow-list]:not([data-follow-wall]) > [data-media-card] { align-self: stretch; }
-.peach-react [data-follow-list] > [data-follow-empty] { grid-column: 1 / -1; }
 
 /* 图片墙：列数同资料页照片墙那一套，小图 5 列、大图 3 列，逐档收窄。 */
 .peach-react [data-follow-wall] {
@@ -291,6 +290,11 @@
 @media (max-width: 640px) {
   .peach-react [data-follow-wall] { --photo-columns: 2; gap: 12px 8px; }
   .peach-react [data-follow-wall][data-size="big"] { --photo-columns: 1; }
+}
+/* 文字区的最小高度是给等高网格对齐同一行卡片的；瀑布流每列各自往下排，按内容定高，卡片底下不留空。 */
+.peach-react [data-follow-wall][data-layout="masonry"] [data-follow-item] [data-media-meta] {
+  min-height: 0;
+  contain-intrinsic-block-size: none;
 }
 .peach-react [data-follow-wall][data-layout="masonry"]:has(> [data-media-card]) {
   row-gap: 0;

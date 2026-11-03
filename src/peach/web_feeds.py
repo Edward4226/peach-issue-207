@@ -584,7 +584,7 @@ def q_feed_discoveries(contract, args) -> dict:
         wanted = wants.wanted_keys(connection, (normalise_code_key(row["code"]) for row in rows[:limit]))
         performers = _discovery_performers(connection, contract, rows[:limit])
     more = len(rows) > limit
-    # 最近一轮取新作资料或补新作封面里封面断在连接上的部数。只看最近这一轮：换了线路之后
+    # 最近一轮新作资料采集或新作封面采集里封面断在连接上的部数。只看最近这一轮：换了线路之后
     # 下一轮取到，提示就该跟着消失，而不是让一次旧故障一直挂在页面上。
     last = [run for task_key in (feed_followup.TASK_KEY, feed_followup.COVER_TASK_KEY)
             for run in contract.task_runs.query(status="succeeded", task_key=task_key, limit=1)]

@@ -24,7 +24,8 @@ import httpx
 import pystray
 from PIL import Image
 
-from . import error_reporting, ledger_backups, log_retention, onboarding, runtime_prepare, settings_file
+from . import (desktop_startup, error_reporting, ledger_backups, log_retention, onboarding, runtime_prepare,
+               settings_file, sparkle_update)
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
 from .distribution import standalone
@@ -280,6 +281,7 @@ class ServiceManager:
         self._ledger_plan = ledger_plan or self._current_ledger_plan
         self._mount_share = mount_share or self._mount_shared_root
         self._owned: dict[str, subprocess.Popen] = {}
+        self._starting: set[str] = set()
         # 子服务都挂进这个 Job：托盘被强杀时句柄由内核关闭，整棵 `peach serve` 一起收掉，
         # 不会留下孤儿继续占着 80/443，让下一份托盘见端口健康就不拉自己的。
         self._job = None
@@ -299,6 +301,9 @@ class ServiceManager:
             response = self._health_get(
                 spec.health_url, timeout=0.5, verify=spec.verify, trust_env=False,
             )
+            # 已经能应答的服务进入正常健康判定；503 或坏响应不能一直算「启动中」。
+            with self._lock:
+                self._starting.discard(spec.name)
             payload = response.json()
             ok = response.status_code == 200 and payload.get("ok") is True
             detail = "" if ok else f"状态码 {response.status_code}"
@@ -318,6 +323,17 @@ class ServiceManager:
     def log_dir(self) -> Path:
         return self._log_dir
 
+    def starting_services(self) -> tuple[str, ...]:
+        """尚未应答、且本托盘刚拉起的进程仍活着的服务。"""
+        with self._lock:
+            return tuple(name for name in self._starting
+                         if name in self._owned and self._owned[name].poll() is None)
+
+    def waiting_for_startup(self) -> bool:
+        with self._lock:
+            down = {spec.name for spec in self.specs if not self._last_health[spec.name][0]}
+            return bool(down) and down <= set(self.starting_services())
+
     def status(self) -> str:
         """菜单里那一行状态：每个服务逐个点名，正常的和异常的都写出来。
 
@@ -329,6 +345,8 @@ class ServiceManager:
             for spec in self.specs:
                 ok, detail = self._last_health[spec.name]
                 state = (f"正常（{detail}）" if detail else "正常") if ok else f"异常（{detail}）" if detail else "异常"
+                if not ok and spec.name in self.starting_services():
+                    state = "启动中"
                 parts.append(f"{spec.name.upper()} {state}")
         return " · ".join(parts)
 
@@ -339,6 +357,8 @@ class ServiceManager:
             warnings = set(value for spec in self.specs
                            for value in self._mount_warnings.get(spec.name, ()))
             state = ("运行中" if healthy == len(self.specs) else "部分服务异常") if healthy else "服务未运行"
+            if self.waiting_for_startup():
+                state = "启动中"
         return f"{state} · {len(warnings)} 项提醒" if warnings else state
 
     def status_details(self) -> tuple[str, ...]:
@@ -348,6 +368,8 @@ class ServiceManager:
             for spec in self.specs:
                 ok, detail = self._last_health[spec.name]
                 state = "正常" if ok else f"异常（{detail}）" if detail else "异常"
+                if not ok and spec.name in self.starting_services():
+                    state = "启动中"
                 services.append(menu_text(f"{spec.name.upper()} {state}"))
             warnings = dict.fromkeys(value for spec in self.specs
                                      for value in self._mount_warnings.get(spec.name, ()))
@@ -411,6 +433,7 @@ class ServiceManager:
                     )
                 assign_to_job(self._job, process)
                 self._owned[spec.name] = process
+                self._starting.add(spec.name)
                 logging.getLogger(__name__).info(
                     "拉起 %s 服务，PID %s", spec.name, getattr(process, "pid", "?"))
 
@@ -434,6 +457,7 @@ class ServiceManager:
                 processes = [process] if process is not None else []
                 stopped = [name]
             for key in stopped:
+                self._starting.discard(key)
                 if key in self._last_health:
                     self._last_health[key] = (False, "已停止")
         for process in processes:
@@ -1071,6 +1095,7 @@ class PeachTray:
         self._diagnostics_lock = threading.Lock()
         self._build_checked_at = time.monotonic()
         self._build_attempted_head: str | None = None
+        self._pending_startup: tuple[list, bool, str | None] | None = None
         version_menu = pystray.Menu(
             pystray.MenuItem(lambda _item: f"Peach {self.version.package_version}", None, enabled=False),
             pystray.MenuItem(lambda _item: self.version.build_label, None, enabled=False),
@@ -1152,6 +1177,27 @@ class PeachTray:
                                 if step.state == "stale" else "")
                 for step in steps if step.problem]
 
+    def _complete_startup(self, ready: bool, steps: list, *, open_browser: bool = False,
+                          source_commit: str | None = None) -> list[str]:
+        """记录当前结果；观察窗口结束后仍在启动的服务由健康监测补齐。"""
+        if ready:
+            readiness = self._readiness() or runtime_prepare.Step("readiness", "current", "服务已就绪")
+        elif self.manager.waiting_for_startup():
+            readiness = runtime_prepare.Step("readiness", "pending", "服务仍在启动，请查看托盘状态")
+        else:
+            readiness = runtime_prepare.Step("readiness", "failed", "服务未能启动，请查看托盘状态和日志")
+        self._pending_startup = ((steps, open_browser, source_commit)
+                                 if readiness.state == "pending" else None)
+        problems = self._record([*steps, readiness])
+        if readiness.state == "current":
+            if source_commit is not None:
+                pending = self.windows_updates.pending()
+                if pending is not None and pending.commit == source_commit:
+                    self.windows_updates.clear_pending()
+            if open_browser:
+                self.gate.open()
+        return problems
+
     def _restart_whole_tray(self, tray_icon, reason) -> bool:
         """依赖要换就整托盘重启：本进程加载着 venv 里的 `.pyd`，活着的托盘里同步不了。
 
@@ -1177,7 +1223,9 @@ class PeachTray:
         tray_icon.notify(f"整体重启托盘没有完成：{message}。只重启子服务。", "Peach")
         return False
 
-    def _restart_services(self, tray_icon) -> tuple[bool | None, list[str]]:
+    def _restart_services(
+        self, tray_icon, *, source_commit: str | None = None,
+    ) -> tuple[bool | None, list[str]]:
         """停子服务、迁移、再拉起并检查就绪。返回 (是否恢复, 要告诉人的问题)。
 
         依赖与锁文件不一致时先交给整托盘重启，交出去了就返回 (None, [])。
@@ -1192,12 +1240,12 @@ class PeachTray:
             migrated.append(step)
             if step is not None and step.failed:
                 raise RuntimeError(step.message)
+        self._pending_startup = None
         try:
             ready = self.manager.restart(prepare=prepare if self.preparation else None)
         except RuntimeError:
             return False, self._record([dependencies, *migrated])
-        readiness = [self._readiness()] if ready else []
-        return ready, self._record([dependencies, *migrated, *readiness])
+        return ready, self._complete_startup(ready, [dependencies, *migrated], source_commit=source_commit)
 
     def restart(self, icon=None, _item=None) -> None:
         if not self._action_lock.acquire(blocking=False):
@@ -1213,7 +1261,9 @@ class PeachTray:
                     self.manager.stop_owned()
                     return
                 tray_icon.update_menu()
-                if not ready:
+                if self._pending_startup is not None:
+                    tray_icon.notify("服务仍在启动，请查看托盘状态。", "Peach")
+                elif not ready:
                     tray_icon.notify("；".join(["服务未能在 20 秒内恢复，请查看日志", *problems])
                                      + "。", "Peach")
                 elif problems:
@@ -1356,12 +1406,13 @@ class PeachTray:
                     tray_icon.stop()
                     return
 
-                ready, problems = self._restart_services(tray_icon)
+                ready, problems = self._restart_services(tray_icon, source_commit=pending.commit)
                 if ready is None:
                     return
-                if ready:
-                    self.windows_updates.clear_pending()
-                suffix = "服务已重启。" if ready else "服务未能恢复，请查看日志。"
+                if self._pending_startup is not None:
+                    suffix = "服务仍在启动，请查看托盘状态。"
+                else:
+                    suffix = "服务已重启。" if ready else "服务未能恢复，请查看日志。"
                 if problems:
                     suffix += "但" + "；".join(problems) + "。"
                 tray_icon.update_menu()
@@ -1420,6 +1471,17 @@ class PeachTray:
             if self.gate.poll() and self.preparation is not None:
                 self.preparation = tray_preparation(self.gate.config, self.manager)
             down = [spec for spec in self.manager.specs if not self.manager.healthy(spec)]
+            if self._pending_startup is not None and self._action_lock.acquire(blocking=False):
+                try:
+                    if self._pending_startup is not None:
+                        steps, open_browser, source_commit = self._pending_startup
+                        problems = self._complete_startup(
+                            not down, steps, open_browser=open_browser, source_commit=source_commit,
+                        )
+                        if problems and self._pending_startup is None:
+                            self.icon.notify("；".join(problems), "Peach")
+                finally:
+                    self._action_lock.release()
             if down:
                 self.revive_services()
             self.icon.update_menu()
@@ -1468,19 +1530,10 @@ class PeachTray:
         except Exception:
             logging.getLogger(__name__).warning("数据库备份清退失败", exc_info=True)
         self._startup_warning = None
-        if self.gate.waiting:
-            if self.manager.wait_until_ready():
-                if not self.silent:
-                    self.gate.open()
-            else:
-                self._startup_warning = "首次设置服务没能启动，请查看日志。"
-        elif not self.manager.wait_until_ready():
-            self._startup_warning = "Peach 只启动了部分服务，请查看托盘状态和日志。"
-        else:
-            startup.append(self._readiness())
-            if self.show_browser:
-                self.gate.open()
-        problems = self._record(startup)
+        problems = self._complete_startup(
+            self.manager.wait_until_ready(), startup,
+            open_browser=(not self.silent if self.gate.waiting else self.show_browser),
+        )
         if problems:
             self._startup_warning = "；".join(
                 part for part in (self._startup_warning, *problems) if part)
@@ -1536,6 +1589,60 @@ def restart_tray_process(
         ["launchctl", "kickstart", "-k", f"gui/{uid}/{LAUNCH_AGENT_LABEL}"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
+
+
+_MACOS_DIAGNOSTICS_LOCK = threading.Lock()
+
+
+def export_macos_diagnostics(notify: Callable[[str, str], None]) -> None:
+    """与 Windows 托盘同一份报告；保存后在访达里选中它，不另做结果窗口。"""
+    if not _MACOS_DIAGNOSTICS_LOCK.acquire(blocking=False):
+        return
+
+    def work() -> None:
+        from .support_bundle import save_bundle
+        try:
+            path = save_bundle()
+            subprocess.run(["open", "-R", str(path)], check=False)
+            notify(f"诊断报告已保存：{path.name}", "Peach 诊断报告")
+        except Exception as error:
+            notify(error_reporting.failure_details("report-export", error), "Peach 诊断报告")
+        finally:
+            _MACOS_DIAGNOSTICS_LOCK.release()
+
+    threading.Thread(target=work, name="PeachDiagnostics", daemon=True).start()
+
+
+class MacUpdateEntry:
+    """macOS 菜单栏的「检查更新」：启用 Sparkle 时由它检查、下载并在退出时替换，否则做版本检查。
+
+    版本检查和「同步开发进度」「同步 Ledger」共用菜单栏那把动作锁；Sparkle 自己串行，不占锁。
+    """
+
+    def __init__(self, sparkle, versions: VersionManager, state: dict, lock: threading.Lock,
+                 notify: Callable[[str, str], None]):
+        self.sparkle, self.versions, self.state, self.lock, self.notify = sparkle, versions, state, lock, notify
+
+    def check(self) -> None:
+        # 菜单项在主线程上回调，Sparkle 可以直接调用。
+        if self.sparkle is not None:
+            self.sparkle.check()
+        elif self.lock.acquire(blocking=False):
+            threading.Thread(target=self._check_versions, name="PeachUpdate", daemon=True).start()
+
+    def _check_versions(self) -> None:
+        try:
+            self.notify("正在检查更新…", "Peach")
+            result = self.versions.check()
+            self.state["snapshot"] = result.snapshot
+            self.notify(result.message, "Peach 版本与更新")
+        finally:
+            self.lock.release()
+
+    def follow(self, state_dir: Path) -> None:
+        """设置页的自动更新偏好同步给 Sparkle；没有 Sparkle 时服务进程自己定时检查。"""
+        if self.sparkle is not None:
+            self.sparkle.follow(state_dir)
 
 
 def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = None, *, silent: bool = False, show_browser: bool = False) -> None:
@@ -1638,6 +1745,9 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
     def open_configuration() -> None:
         webbrowser.open(gate.open_url() + "configuration")
 
+    # Sparkle 要在 NSApplication 建好之后创建，先放空，菜单建好再补上。
+    updates = MacUpdateEntry(None, versions, state, action_lock, notify)
+
     menu = MenuBarApp(
         create_icon(template=True),
         "Peach · 蜜桃",
@@ -1654,16 +1764,21 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
                 lambda label, action: (label, action), sync_ledger, take_ownership),
             ("重启服务", restart),
             ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
-            ("版本信息", Submenu(lambda: [
+            ("导出诊断报告", lambda: export_macos_diagnostics(notify)),
+            ("版本与更新", Submenu(lambda: [
                 (f"Peach {state['snapshot'].package_version}", None),
                 (menu_text(state['snapshot'].build_label), None),
                 (menu_text(state['snapshot'].channel_label), None),
+                (None, None),
+                ("检查更新", updates.check),
             ])),
             (None, None),
             ("退出 Peach", quit_now),
         ],
     )
     app["app"] = menu
+    updates.sparkle = sparkle_update.start(config=lambda: gate.config, stop_services=manager.stop_owned,
+                                           notify=notify)
     gate.notify = lambda message, title: notify(message, title)
     if (gate.waiting and not silent) or show_browser:
         gate.open()
@@ -1676,6 +1791,7 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
             gate.poll()
             for spec in manager.specs:
                 manager.healthy(spec)
+            updates.follow(gate.config.directory("state"))
 
     def refresh_certificate() -> bool:
         """本机地址变了就补签证书并重启 HTTPS。成功返回 True。
@@ -1773,12 +1889,29 @@ def log_to_file(path: Path) -> logging.Handler | None:
     return handler
 
 
+def failure_exit_code() -> int:
+    """托盘自己判定失败时的退出码；launchd 名下的 macOS 菜单栏项按 0 退出。
+
+    LaunchAgent 写的是 `KeepAlive = {SuccessfulExit: false}`（见
+    `desktop_startup.MACOS_KEEP_ALIVE`），非 0 退出会被重新拉起。走到这里的是配置、迁移、
+    建菜单这类失败，原因已经记下，重来结果相同，拉起只会每隔 ThrottleInterval 再失败一次。
+    PyObjC 的事件循环自己接住菜单回调里的异常，所以要 launchd 恢复的是崩溃和信号终止，
+    不经过这里。终端里手跑和 Windows 仍得到 1。
+    """
+    if sys.platform != "darwin":
+        return 1
+    try:
+        return 0 if launchd_owns_this_process() else 1
+    except OSError:
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         return _main(argv)
     except Exception as exc:
         show_message("Peach 启动失败", error_reporting.failure_details("tray-startup", exc), error=True)
-        return 1
+        return failure_exit_code()
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -1827,6 +1960,11 @@ def _main(argv: list[str] | None = None) -> int:
             remember_installation_data_root(config)
         except (OSError, RuntimeError):
             logging.getLogger(__name__).warning("更新后的数据目录位置未能保存", exc_info=True)
+        try:
+            if desktop_startup.refresh_launch_agent(config):
+                LOGGER.info("登录启动项已补上异常退出恢复，下次登录生效")
+        except (OSError, ValueError):
+            LOGGER.warning("登录启动项的异常退出恢复未能更新", exc_info=True)
         if sys.platform == "win32":
             lifecycle = Lifecycle(config.directory("state"), config.directory("logs"),
                                   config.data_root, PROJECT_ROOT)
@@ -1858,7 +1996,7 @@ def _main(argv: list[str] | None = None) -> int:
         LOGGER.exception("托盘运行失败")
         if not os.environ.get("PEACH_TRAY_RECOVERIES"):
             show_message("Peach 启动失败", error_reporting.failure_details("tray-runtime", exc), error=True)
-        return 1
+        return failure_exit_code()
     finally:
         if lifecycle is not None:
             lifecycle.exited(exit_code)

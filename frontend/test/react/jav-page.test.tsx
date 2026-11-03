@@ -103,3 +103,14 @@ it('没有推荐时空态的查看口味在左，主入口在右', async () => {
   const main = [...host.querySelectorAll('[data-empty-state] a')].find((link) => link.textContent === '浏览馆藏');
   expect(main?.className).toContain('bg-button-primary');
 });
+
+it('发现页读取作品资料的进度单独成框', async () => {
+  history.replaceState(null, '', '/jav?tab=discover');
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [], candidate_total: 0, limited: false,
+    metadata_job: { job_id: 'm', status: 'running', completed: 37, total: 100, failed: 0, requests: 0, bytes: 0 } }) })));
+  const host = await mount(<QueryClientProvider client={queryClient}><JavPage tab="discover" readOnly navigate={vi.fn()} receipt={vi.fn()} /></QueryClientProvider>);
+  await settle();
+  const progress = host.querySelector('[data-task-progress]');
+  expect(progress?.getAttribute('data-task-progress')).toBe('framed');
+  expect(progress?.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('37');
+});

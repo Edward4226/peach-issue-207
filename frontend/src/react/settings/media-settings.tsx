@@ -42,6 +42,19 @@ import {
   ErrorText, ExternalLink, Fact, FactList, Footer, Help, Section, SourceMark, Stack,
 } from './section';
 import { busyProps, useAction } from './use-action';
+import { confirmModal } from '@peach/legacy/ui';
+import { fetchLibraryProcessing, processingActive, restartEffectText } from '../library-processing/library-processing';
+
+/** 保存会重启 Peach。扫描与采集在跑时先确认；读不到任务状态就照常保存，不让旁路读数挡住保存。 */
+async function confirmRestartDuringProcessing(scanAfterSave: boolean): Promise<boolean> {
+  let state;
+  try { state = await fetchLibraryProcessing() } catch { return true }
+  if (!processingActive(state)) return true;
+  const { confirmed } = await confirmModal({
+    title: '扫描与采集正在进行', body: restartEffectText(state, scanAfterSave), confirmLabel: '仍然保存',
+  });
+  return confirmed;
+}
 
 const sourceName = (location: string) => MEDIA_SOURCES.find(([kind]) => kind === location)?.[1] ?? location;
 const sourceOptions = [...MEDIA_SOURCES, ['smb', 'SMB 共享'] as const];
@@ -130,6 +143,7 @@ function MediaForm({ data, receipt }: ConfigurationGroupProps) {
   const [smbResults, setSmbResults] = useState<Record<number, { message: string; directories: string[] }>>({});
   const [saved, setSaved] = useState<SaveResult | null>(null);
   const revision = useRef(data.revision);
+  const confirming = useRef(false);
   const action = useAction();
   // 订阅来源色样式表：改色时卡片当场试色，保存后服务端的颜色接替。
   useLibraryTints();
@@ -174,7 +188,16 @@ function MediaForm({ data, receipt }: ConfigurationGroupProps) {
       requestAnimationFrame(() => form.querySelector<HTMLButtonElement>(`[data-media-read-policy="${missing}"] button`)?.focus());
       return;
     }
+    if (action.busy || confirming.current) return;
     setFailure('');
+    confirming.current = true;
+    void confirmRestartDuringProcessing(scanNow).then((proceed) => {
+      confirming.current = false;
+      if (proceed) save();
+    });
+  };
+
+  const save = () => {
     void action.run('save', (signal) => apiSend<SaveResult>(CONFIGURATION_URL, {
       revision: revision.current,
       media_dirs: rows.map((row) => row.path),
@@ -195,7 +218,7 @@ function MediaForm({ data, receipt }: ConfigurationGroupProps) {
 
   if (saved) {
     return (
-      <Section title="媒体库与目录">
+      <Section guide="media" title="媒体库与目录">
         <Stack>
           <Note tone="success" title="配置已保存">
             Peach 正在重新启动。稍后自动跳转，或点击<LinkButton href={saved.url} size="small">进入馆藏</LinkButton>。
@@ -210,7 +233,7 @@ function MediaForm({ data, receipt }: ConfigurationGroupProps) {
   const cloud = rows.some((row) => isCloudSource(row.location));
   const missing = cloud ? (data.mount_dependencies ?? []).filter((dependency) => !dependency.available) : [];
   return (
-    <Section title="媒体库与目录" onSubmit={submit}>
+    <Section guide="media" title="媒体库与目录" onSubmit={submit}>
       <Stack>
         {/* 按媒体库分组：名称、图标、来源色、处理方式属于媒体库，每组只写一次；
             下面列这个媒体库的文件夹，文件夹只管路径、来源与读取策略。 */}
@@ -365,7 +388,7 @@ function MountStatus({ data }: { data: ConfigurationData }) {
   const refresh = () => void action.run('refresh', (signal) => fetchConfiguration(signal),
     (result) => queryClient.setQueryData(CONFIGURATION_KEY, result));
   return (
-    <Section title="挂载状态">
+    <Section guide="mounts" title="挂载状态">
       <FactList>
         {sources.map((row, index) => (
           <Fact key={index} term={<><SourceMark mark={sourceMark(row.location)} />{sourceName(row.location)}</>}>

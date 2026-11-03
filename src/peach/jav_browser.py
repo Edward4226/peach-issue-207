@@ -9,15 +9,19 @@ import math
 import re
 import secrets
 import threading
+import time
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from .catalog_rules import is_jav_code, normalise_code_key, release_code_from_product, same_release_code
+from .catalog_rules import (
+    is_jav_code, normalise_code_key, release_code_from_product, same_release_code, without_store_prefix,
+)
 from .config import PROJECT_ROOT
 from .downloads import (
-    CLOUDDRIVE_CREDENTIAL, INGESTED, POSTPROCESS_LABELS, REMOTE_RUNNING, RESUBMITTABLE_STATES,
-    STATE_LABELS, never_seen, submit_offline_download, parse_magnet,
+    CLOUDDRIVE_CREDENTIAL, INGESTED, POSTPROCESS_LABELS, POSTPROCESS_PENDING, POSTPROCESS_QUEUED,
+    POSTPROCESS_RUNNING, REMOTE_RUNNING, RESUBMITTABLE_STATES, STATE_LABELS, TRACKED_STATES, iso,
+    never_seen, submit_offline_download, parse_magnet,
 )
 from .follow_secrets import CredentialError
 from .feeds import scan_code
@@ -27,6 +31,9 @@ from .sources.dmm import code_from_cid
 LOGGER = logging.getLogger(__name__)
 CREDENTIAL = "jav-browser"
 ACTIVE = {"queued", "searching"}
+#: 共享进度列表的上限，与持久队列同为 200；结束的任务保留 10 分钟，供各窗口看到完成。
+ACTIVE_LIMIT = 200
+RECENT_SECONDS = 600
 MESSAGES = {
     "idle": "可以加入 Peach 馆藏", "queued": "等待搜索磁力", "searching": "正在搜索磁力",
     "submitted": "云下载进行中", "ingested": "已加入 Peach 馆藏", "owned": "馆藏已有该番号影片",
@@ -75,7 +82,8 @@ def code_key(value: object) -> str:
     code = release_code_from_product(raw) if len(raw) <= 80 else None
     if not code or not is_jav_code(code) or normalise_code_key(raw) != normalise_code_key(code):
         raise ValueError("请提供一个明确的 JAV 番号")
-    return normalise_code_key(code)
+    # 店铺商品号（`107STZY-019`）在账本与资源站都是裸番号，查询、搜索与入库统一用它。
+    return without_store_prefix(code)
 
 
 def source_page(value: object) -> str:
@@ -158,12 +166,17 @@ class JavBrowser:
         payload = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or len(payload) > 200:
             raise ValueError("浏览器添加队列无法读取")
+        rows = {}
         for key, row in payload.items():
-            if not isinstance(row, dict) or code_key(key) != key or row.get("state") not in MESSAGES:
+            if not isinstance(row, dict) or normalise_code_key(key) != key or row.get("state") not in MESSAGES:
                 raise ValueError("浏览器添加队列无法读取")
             if row["state"] == "searching":
                 row["state"] = "queued"
-        return payload
+            # 店铺前缀归一之前记下的行（`107STZY-019`）改记到裸番号下，裸番号已有记录时以它为准。
+            canonical = code_key(key)
+            if canonical == key or canonical not in rows:
+                rows[canonical] = row
+        return rows
 
     def _save(self):
         atomic_write_text(self.path, json.dumps(self.rows, ensure_ascii=False, indent=2) + "\n")
@@ -283,6 +296,43 @@ class JavBrowser:
             return {"ok": True, "code": code, **row, **detail, "state": state,
                     "stage": "submitting" if code in self._submitting else state,
                     "message": row.get("message") or MESSAGES[state]}
+
+    def retry_postprocess(self, value: object) -> dict:
+        """重试这个番号入库后失败的整理，与任务中心的「重试整理」同一入口。"""
+        status = self.status(value)
+        task_id = status.get("task_id")
+        if not task_id or status["state"] != "ingested" or status.get("download", {}).get("postprocess_state") != "failed":
+            raise ValueError("这个番号没有失败的整理可以重试")
+        self.downloads.retry_postprocess(int(task_id))
+        return self.status(value)
+
+    def active(self) -> dict:
+        """进行中与最近结束的任务，供用户脚本的各个窗口共享同一份进度。
+
+        进行中与脚本 `tracking()` 同一判据：排队、搜索、云下载，或已入库但整理未结束。
+        最近 `RECENT_SECONDS` 内结束的任务带着终态留在列表里，脚本据此看到「进行中 → 完成」。
+        """
+        cutoff = iso(time.time() - RECENT_SECONDS)
+        tracked = sorted(TRACKED_STATES)
+        organizing = (POSTPROCESS_PENDING, POSTPROCESS_QUEUED, POSTPROCESS_RUNNING)
+        with self.contract.database.read_connection() as connection:
+            codes = [row[0] for row in connection.execute(
+                "SELECT normalise_code_key(code) AS key FROM download_task WHERE code IS NOT NULL AND code<>'' AND ("
+                f"state IN ({','.join('?' * len(tracked))}) OR (state=? AND postprocess_state IN (?,?,?)) "
+                "OR max(updated_at, coalesce(postprocessed_at,''), coalesce(finished_at,''))>=?) "
+                "GROUP BY key ORDER BY max(id) DESC LIMIT ?",
+                (*tracked, INGESTED, *organizing, cutoff, ACTIVE_LIMIT))]
+        with self._lock:
+            queued = [code for code, row in self.rows.items() if row["state"] in ACTIVE or code in self._submitting]
+        items = []
+        for code in dict.fromkeys([*queued, *codes]):
+            try:
+                status = self.status(code)
+            except ValueError:
+                continue
+            if status["state"] != "idle":
+                items.append(status)
+        return {"ok": True, "items": items[:ACTIVE_LIMIT]}
 
     def add(self, body: dict) -> dict:
         code = code_key(body.get("code"))

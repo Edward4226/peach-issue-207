@@ -259,12 +259,20 @@ def file_key(name: str) -> str:
 
 def discover_sidecars(video: Path, video_suffixes: set[str]) -> list[dict]:
     """读取正片所在目录，返回配给当前视频的字幕，不写账本。"""
+    from .smb_media import SmbResource
+
+    def wanted(name: str) -> bool:
+        return Path(name).suffix.lower() in video_suffixes or bool(subtitle_format(name))
+
     try:
-        with os.scandir(video.parent) as entries:
-            names = [entry.name for entry in entries
-                     if (Path(entry.name).suffix.lower() in video_suffixes
-                         or subtitle_format(entry.name))
-                     and entry.is_file(follow_symlinks=False)]
+        if isinstance(video, SmbResource):
+            # SMB 共享上的作品不是操作系统路径，经共享列目录；传输层错误已映射为 OSError。
+            names = [entry.name for entry in video.parent.scandir()
+                     if wanted(entry.name) and not entry.is_dir and not entry.is_symlink]
+        else:
+            with os.scandir(video.parent) as entries:
+                names = [entry.name for entry in entries
+                         if wanted(entry.name) and entry.is_file(follow_symlinks=False)]
     except OSError:
         return []
     videos = [name for name in names if Path(name).suffix.lower() in video_suffixes]

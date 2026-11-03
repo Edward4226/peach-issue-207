@@ -45,7 +45,7 @@ Use demo data without sexually explicit imagery in public screenshots, recording
 
 `status:needs-info` 表示缺少定位所需的信息，回复中应列明具体缺口；`status:needs-verification` 表示修复已有可下载版本，等待目标环境验证。两者互斥，条件消失时移除。未处理、处理中、已关闭不另设状态标签。没有明确影响的平台或模块可以留空。
 
-`bug`、`enhancement` 保留给 PR 和未设置 Type 的 issue；使用 Type 的新 issue 不重复添加同义标签。`dependencies`、`javascript`、`github_actions`、`python:uv` 用于对应依赖更新，`documentation`、`accessibility` 等按实际内容使用。标签名称保持稳定，颜色和双语说明以清单为准；修改清单时同步 GitHub 并回读核对，不批量删除或重命名已有标签。
+`bug`、`enhancement` 保留给 PR 和未设置 Type 的 issue；使用 Type 的新 issue 不重复添加同义标签。`dependencies`、`javascript`、`github_actions`、`python:uv`、`docker` 用于对应依赖更新，`documentation`、`accessibility` 等按实际内容使用。标签名称保持稳定，颜色和双语说明以清单为准；修改清单时同步 GitHub 并回读核对，不批量删除或重命名已有标签。
 
 ### 关闭、重开与关联
 

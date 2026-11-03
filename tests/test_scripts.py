@@ -1713,6 +1713,68 @@ class OperationalScriptTests(unittest.TestCase):
             " ORDER BY id").fetchall(), untouched)
         self.assertEqual(backfill.written_ids(out), {2})
 
+    def test_rule34video_character_backfill_only_retypes_the_site_character_group(self):
+        """存量行只把站方 Characters 组里的名字改记 character，别的类型与列一格不动。"""
+        backfill = load_script("backfill_rule34video_characters")
+        self.assertIs(backfill.open_for_write, scripting.open_for_write)
+        root = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, root, True)
+        database = root / "ledger.db"
+        seeding = sqlite3.connect(database)
+        seeding.executescript(
+            "CREATE TABLE follow_source(id INTEGER PRIMARY KEY, provider TEXT);"
+            "CREATE TABLE follow_item(id INTEGER PRIMARY KEY, source_id INTEGER,"
+            " external_id TEXT, url TEXT, metadata_json TEXT);"
+            "INSERT INTO follow_source VALUES(1,'rule34video');")
+        typed = {"tags": ["harry potter (harry potter)", "d.mon (overwatch)", "sex"],
+                 "tag_types": {"harry potter (harry potter)": "general",
+                               "d.mon (overwatch)": "general", "sex": "general",
+                               "3D": "metadata"}}
+        seeding.executemany("INSERT INTO follow_item VALUES(?,1,?,?,?)", [
+            (1, "4708183", "https://rule34video.com/video/4708183/x/",
+             json.dumps(typed)),
+            (2, "4708184", "https://rule34video.com/video/4708184/y/",
+             json.dumps({"tags": []}))])
+        seeding.commit()
+        seeding.close()
+        detail = (
+            b'<html><body><div class="vp-group vp-group--characters">'
+            b'<a class="tag_item" href="https://rule34video.com/tags/h/">'
+            b'harry potter (harry potter)</a></div><div class="vp-group">'
+            b'<a class="tag_item" href="https://rule34video.com/tags/d/">d.mon (overwatch)</a>'
+            b'<a class="tag_item" href="https://rule34video.com/tags/s/">sex</a>'
+            b'</div></body></html>')
+        asked = []
+
+        class Connector:
+            def _get(self, url, headers=None):
+                asked.append(url)
+                return HttpResponse(200, {}, detail)
+
+            def _raise_if_rate_limited(self, response):
+                return None
+
+        out = root / "characters.csv"
+        common = ["--db", str(database), "--out", str(out), "--delay", "0"]
+        with mock.patch.object(backfill, "build_connector", return_value=Connector()), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(backfill.run(backfill.build_parser().parse_args(common)), 0)
+            with closing(sqlite3.connect(database)) as peek:
+                self.assertEqual(json.loads(peek.execute(
+                    "SELECT metadata_json FROM follow_item WHERE id=1").fetchone()[0]), typed)
+            self.assertEqual(backfill.run(backfill.build_parser().parse_args(
+                common + ["--apply", "--backup", str(root / "b.db")])), 0)
+        # 没有 `tag_types` 的行留给常规检查，不问详情页。
+        self.assertEqual(asked, ["https://rule34video.com/video/4708183/x/"] * 2)
+        after = sqlite3.connect(database)
+        self.addCleanup(after.close)
+        rows = dict(after.execute("SELECT id, metadata_json FROM follow_item"))
+        self.assertEqual(json.loads(rows[1]), {
+            **typed, "tag_types": {**typed["tag_types"],
+                                   "harry potter (harry potter)": "character"}})
+        self.assertEqual(json.loads(rows[2]), {"tags": []})
+        self.assertEqual(backfill.settled_ids(out), {1})
+
     def test_follow_image_dims_backfill_reads_archives_first_and_probes_headers_for_the_rest(self):
         """图片墙的比例占位要每张图都有宽高；存量行里只有 fanbox 记过。
 
@@ -4651,6 +4713,7 @@ class ScriptingConventionTests(unittest.TestCase):
     #: 会真写 ledger、已经收口到本模块的脚本。
     LEDGER_WRITERS = (
         "backfill_rule34_details",
+        "backfill_rule34video_characters",
         "clean_names",
         "install_entity_links",
         "localize_performer_names",

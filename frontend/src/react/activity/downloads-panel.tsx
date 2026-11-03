@@ -126,8 +126,7 @@ function TaskCard({ task, writable }: { task: DownloadTask; writable: boolean })
   return (
     <li data-download-state={task.state} data-download-id={task.id}
       className={cardClass({
-        padding: 'none', bordered: 'line',
-        className: failed ? 'flex flex-col border-border-error-default' : 'flex flex-col',
+        padding: 'none', bordered: failed ? 'error' : undefined, className: 'flex flex-col',
       })}>
       <div className="flex items-stretch gap-3 px-5 pt-5 pb-4">
         <div data-download-cover="" data-media-pic=""

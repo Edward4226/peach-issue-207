@@ -188,15 +188,15 @@ class WebContract:
         #: 后继调度（ADR-0040）。导入 `avatar_followup` 就是它的登记动作：调度器本身
         #: 不认识任何一种后继，登记表在 `followups.REGISTRY` 里。
         from . import avatar_followup  # noqa: F401  登记补头像后继
-        from . import creator_identity_followup  # noqa: F401  登记查创作者身份后继
+        from . import creator_identity_followup  # noqa: F401  登记创作者身份查找后继
         from . import download_postprocess  # noqa: F401  登记云下载后处理
-        from . import feed_followup  # noqa: F401  登记取新作资料后继
+        from . import feed_followup  # noqa: F401  登记新作资料采集后继
         from . import follow_creators  # noqa: F401  登记关注作者建档后继
         from . import performer_alias_followup  # noqa: F401  登记补女优别名后继
         from . import performer_profile_followup  # noqa: F401  登记补女优资料后继
-        from . import sample_followup  # noqa: F401  登记补番号样张后继
+        from . import sample_followup  # noqa: F401  登记番号样张采集后继
         from . import seed_followup  # noqa: F401  登记导入实体种子后继
-        from . import studio_followup  # noqa: F401  登记补厂牌官网与标识后继
+        from . import studio_followup  # noqa: F401  登记厂牌官网与标识补全后继
         from .followups import FollowupRunner
         self.followups = FollowupRunner(self)
         self.follow_job = self._job("PeachFollowCheckJob", "follow-check")
@@ -368,6 +368,9 @@ class WebContract:
         self.organize_job.stop()
         self.media_repair_job.stop()
         self.amane_bridge_job.stop()
+        self.face_models_job.stop()
+        if hasattr(self, 'task_resource_monitor'):
+            self.task_resource_monitor.close()
         if hasattr(self, "jav_discovery_metadata"):
             self.jav_discovery_metadata.stop()
         self.followups.stop()

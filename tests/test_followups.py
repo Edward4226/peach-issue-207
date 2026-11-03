@@ -170,7 +170,7 @@ class RunnerTests(LedgerTestCase):
 
         with registered(echo_type("code-samples", run=chunk), echo_type(AVATAR_TASK_KEY, run=avatar)):
             self.store.enqueue_followups(parent.id, [
-                ("code-samples:stock", "code-samples", "补番号样张"),
+                ("code-samples:stock", "code-samples", "番号样张采集"),
                 ("entity-avatar:performer:1", AVATAR_TASK_KEY, "甲")])
             self.assertEqual(FollowupRunner(self.contract()).drain(), 4)
         self.assertEqual(order, ["code-samples:stock", "entity-avatar:performer:1",
@@ -352,7 +352,7 @@ class BackgroundJobDispatchTests(LedgerTestCase):
 
     def declared(self):
         return [{"key": "entity-avatar:performer:1", "task_key": AVATAR_TASK_KEY,
-                 "label": "补全资料图片：甲"}]
+                 "label": "资料图片补全：甲"}]
 
     def test_a_successful_run_dispatches_what_it_declared(self):
         job = self.job()
@@ -1637,11 +1637,12 @@ class TaskPayloadTests(LedgerTestCase):
 
     def test_the_detail_endpoint_gives_both_ends_of_the_chain(self):
         from peach.web_tasks import q_task
+        from peach.web_contract import WebContract
 
         parent = self.parent()
         queued = self.store.enqueue_followups(
             parent.id, [("entity-avatar:performer:1", AVATAR_TASK_KEY, "甲")])["queued"]
-        contract = SimpleNamespace(task_runs=self.store)
+        contract = WebContract(self.db)
         payload = q_task(contract, parent.id)
         self.assertIsNone(payload["parent"])
         self.assertEqual([row["id"] for row in payload["followups"]], queued)

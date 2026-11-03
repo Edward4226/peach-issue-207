@@ -713,6 +713,16 @@ class FeedWebTest(FeedWebFixture):
         self.assertFalse(attempt['ok'])
         self.assertIn('error_type', attempt)
 
+    def test_detail_retry_installs_the_cover_or_reports_the_recorded_reason(self):
+        self.cover_misses.add("HMN-071")
+        missed = dispatch_api_post(self.contract, "/api/jav/cover", {"code": "hmn-071"})
+        self.assertEqual((missed["code"], missed["has_cover"], missed["message"]),
+                         ("HMN-071", False, "封面处理未完成"))
+        got = dispatch_api_post(self.contract, "/api/jav/cover", {"code": "SSIS-950"})
+        self.assertEqual((got["has_cover"], got["message"]), (True, ""))
+        self.assertTrue(got["cover_version"])
+        self.assertTrue((self.contract.cover_root / "SSIS-950.poster.json").is_file())
+
     def test_official_miss_does_not_install_a_bound_javdb_image(self):
         from peach.jav_cover_fetch import Unavailable
         self._add()

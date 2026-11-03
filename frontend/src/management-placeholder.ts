@@ -2,11 +2,14 @@
  * 两处各写各的时，整页刷新会连播两段动画：先一张通用大布局骨架，再各页自己的加载态。取同一份，
  * `data-skeleton` 的键就相同，后铺的那一处认出是同一张后不再重画（`paintManagementPlaceholder`）。
  *
- * 版式照 `boardPageSkeleton` 画的那几页之外，数据管理、复核、诊断与采集来源各有一张，其余路径落到通用面板。 */
+ * 版式照 `boardPageSkeleton` 画的那几页之外，数据管理首页与各个维护工具（`cleanup-tool-skeletons.ts`）、复核和
+ * 采集来源各有一张，其余路径落到通用面板。 */
 import { esc } from '@peach/legacy/core';
 import { fitSkeleton, skeletonHtml } from '@peach/legacy/ui';
 
 import { boardPageSkeleton } from './board-skeleton';
+import { cleanupToolSkeletonHtml } from './cleanup-tool-skeletons';
+import { CLEANUP_TOOLS } from './cleanup-tools';
 import { cleanupSkeletonHtml } from './management';
 
 export interface PageSkeletonOptions {
@@ -46,8 +49,10 @@ const reviewSkeletonHtml = (label = '正在读取复核队列'): string => `<div
 
 const PLACEHOLDERS: Record<string, () => string> = {
   '/data-cleanup': () => cleanupSkeletonHtml(),
-  // /resource-sync 只是数据管理页上的一个锚点，占位也该是数据管理那张。
-  '/resource-sync': () => cleanupSkeletonHtml(),
+  /* 每个维护工具都有自己那一页的骨架，新加的工具不会落到下面那张通用面板上。 */
+  ...Object.fromEntries(CLEANUP_TOOLS.map(tool => [tool.path, () => cleanupToolSkeletonHtml(tool.key)])),
+  // 旧地址 /resource-sync 打开后转到资源同步二级页，占位先画成那一页，转过去时同一个键不重画。
+  '/resource-sync': () => cleanupToolSkeletonHtml('resource-sync'),
   '/review': () => reviewSkeletonHtml(),
   /* 采集来源是 812px 窄列里一叠同宽的 Fieldset：一块高清封面加六个来源。骨架画四块，
      那是首屏装得下的张数；说明那一句是静态文案，与数据无关，立刻显示。 */

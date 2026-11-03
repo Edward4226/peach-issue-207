@@ -37,6 +37,34 @@ describe('关注与馆藏共用卡片交互', () => {
     } finally { await opened.stub.release(); await opened.close() }
   });
 
+  for (const viewport of VIEWPORTS) it(`${viewport.name}：筛空时空态铺满整行，不缩成一列卡宽`, async () => {
+    const opened = await openFollowFeed(browser, '/follow', viewport);
+    try {
+      const page = opened.page;
+      await page.route((url) => url.pathname === '/api/follow' && !url.searchParams.has('item'), async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ json: { ...await response.json(), groups: [], has_more: false } });
+      });
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      const empty = page.locator('[data-follow-list] [data-follow-empty] [data-empty-state]');
+      await empty.waitFor({ timeout: 15_000 });
+      const widths = await empty.evaluate(node => ({
+        empty: node.getBoundingClientRect().width, list: node.closest('[data-follow-list]')!.getBoundingClientRect().width,
+      }));
+      assert.ok(Math.abs(widths.empty - widths.list) <= 1, JSON.stringify(widths));
+    } finally { await opened.close() }
+  });
+
+  it('图片瀑布流的卡片按内容定高，文字区底下不留等高网格的空白', async () => {
+    const opened = await openFollowFeed(browser, '/follow?media=images', VIEWPORTS[0]!,
+      { settings: { photoLayout: 'masonry', followImagesOnly: false }, ready: '[data-follow-wall][data-layout="masonry"] > [data-follow-item]' });
+    try {
+      const gaps = await opened.page.locator('[data-follow-wall][data-layout="masonry"] > [data-follow-item] [data-media-meta]').evaluateAll(nodes =>
+        nodes.map(node => node.getBoundingClientRect().bottom - Math.max(...[...node.children].map(child => child.getBoundingClientRect().bottom))));
+      assert.ok(gaps.length && gaps.every(gap => gap <= 1), JSON.stringify(gaps));
+    } finally { await opened.close() }
+  });
+
   it('创作者头像悬停显示描边，键盘焦点可见', async () => {
     const opened = await openFollowFeed(browser, '/follow', VIEWPORTS[0]!, { bindAuthors: true });
     try {

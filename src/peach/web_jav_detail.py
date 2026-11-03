@@ -230,6 +230,32 @@ def q_jav_reviews(contract, args) -> dict:
             "message": ""}
 
 
+def w_jav_cover(contract, body) -> dict:
+    """详情页「立即重试」：按番号取官方封面装进本机封面目录，与后台补封面同一条路。
+
+    只写封面目录与取图记录，不写账本；同步等到取完，`feed_followup.COVER_SECONDS` 封顶。
+    没取到时 `message` 是取图记录里那句去掉来源地址的原因。
+    """
+    from . import feed_followup
+    code = detail_code(body)
+    with contract.database.read_connection() as connection:
+        row = connection.execute("SELECT cover_url FROM feed_discovery WHERE code=? COLLATE NOCASE LIMIT 1",
+                                 (code,)).fetchone()
+    message = ''
+    try:
+        feed_followup.ensure_cover(contract, code, row[0] if row else None)
+    except Exception:  # noqa: BLE001 - 原因已写进取图记录，下面读它
+        try:
+            record = json.loads(feed_followup.cover_attempt_path(contract.cover_root, code).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            record = {}
+        message = str(record.get('reason') or '') if isinstance(record, dict) else ''
+    contract.cache_bust()
+    covered = contract.has_cover(code)
+    return {"ok": True, "code": code, "has_cover": covered, "cover_version": contract.cover_version(code),
+            "message": '' if covered else message or '没有找到可用的官方封面'}
+
+
 #: 来源图片在浏览器里留多久。样张与来源封面落盘后不再刷新；来源头像在服务端按
 #: `AVATAR_REFRESH_SECONDS` 换新，浏览器只留一天，换过的图第二天就看得到。
 JAV_IMAGE_MAX_AGE = 30 * 86400

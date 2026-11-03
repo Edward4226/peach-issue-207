@@ -1377,7 +1377,9 @@ def _site_mark_response(state, url: str, root: Path):
                 upstream = state.http_transport.client.get(
                     locate(target), headers={"User-Agent": USER_AGENT},
                     timeout=8, follow_redirects=True)
-            except (OSError, httpx.HTTPError):
+            except (OSError, ValueError, httpx.HTTPError, httpx.InvalidURL):
+                # 重定向到主机名过不了 IDNA 的地址时传输层抛 ValueError，地址本身不合法时
+                # 抛 InvalidURL；两者都不是 HTTPError，同样算取不到。
                 return None
             if upstream.status_code != 200 or not upstream.content:
                 return None

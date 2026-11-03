@@ -59,7 +59,7 @@ function WantRow({ want, readOnly, busy, onReset, onRemove, onCloudDownload, dow
   const source = want.link || resolvedSource || (want.code ? `https://javdb.com/search?q=${encodeURIComponent(want.code)}&f=all` : '');
   return (
     <li data-want-id={want.id}
-      className={cardClass({ bordered: 'soft', className: 'flex flex-col gap-4 max-sm:p-4' })}>
+      className={cardClass({ className: 'flex flex-col gap-4 max-sm:p-4' })}>
       <div className="flex min-w-0 items-start gap-4 max-sm:gap-3">
       <Cover want={want} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">

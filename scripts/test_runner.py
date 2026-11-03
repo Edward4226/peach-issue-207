@@ -38,7 +38,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                "test_complexity_ratchet.py", "test_source_assertion_ratchet.py", "test_python_lint.py"),
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py", "test_wants_web.py"),
     "catalog": ("test_ad_judgement.py", "test_composite_name_split.py", "test_media_libraries.py", "test_media_folders.py",
-                "test_content_region.py",
+                "test_content_region.py", "test_performer_delete.py",
                 "test_duplicate_identity_merge.py",
                 "test_entity_classification.py", "test_company_profiles.py", "test_fc2_sellers.py",
                 "test_entity_merge.py", "test_entity_redirect.py", "test_fastapi_api.py", "test_field_owners.py",
@@ -65,7 +65,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     # 任务中心的两个文件跟着 `test_jobs.py` 走：`jobs.py` 与 `task_runs.py` 是同一条
     # 接线的两端，改哪一端都要两边一起验。
     "media": ("test_external_playback.py", "test_runtime_consistency.py", "test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
-              "test_task_runs.py", "test_followups.py", "test_task_center_integration.py", "test_face_models.py",
+              "test_task_runs.py", "test_followups.py", "test_task_center_integration.py", "test_task_control.py", "test_task_resources.py", "test_resource_platform.py", "test_face_models.py",
               "test_frame_capture.py", "test_timeline_sheets.py", "test_processing_control.py", "test_processing_traffic.py", "test_processing_inventory.py",
               "test_web_timeline_thumbnails.py", "test_timeline_sources.py", "test_bif.py",
               "test_interaction.py", "test_media.py", "test_mp4repair.py",
@@ -119,7 +119,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_windows_update.py", "test_release_updates.py", "test_automatic_updates.py", "test_standalone_update.py", "test_upgrade_repairs.py", "test_certs.py", "test_config.py",
                 "test_fsutil.py", "test_desktop_settings.py", "test_desktop_installer.py", "test_data_storage.py",
                 "test_job_status.py", "test_jobs.py", "test_task_runs.py", "test_followups.py", "test_update_tasks.py",
-                "test_task_center_integration.py", "test_reference_updates.py",
+                "test_task_center_integration.py", "test_task_control.py", "test_task_resources.py", "test_resource_platform.py", "test_reference_updates.py",
                 "test_repo_hygiene.py", "test_seed_pack.py", "test_seed_followup.py",
                 "test_review_csv.py", "test_jav_code_domain.py", "test_organize.py",
                 "test_link_repair.py", "test_tag_management.py",
@@ -146,7 +146,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
             "test_agency_entity.py", "test_label_maker.py", "test_dependency_policy.py",
             "test_desktop_settings.py", "test_dev_copy.py",
             "test_fastapi_api.py", "test_follow_assets.py", "test_follow_web.py",
-            "test_metadata_library.py", "test_processing_control.py", "test_processing_traffic.py", "test_processing_inventory.py", "test_clouddrive_proxy.py", "test_studio_icon_variants.py", "test_web_settings.py", "test_web_library_shortcuts.py", "test_company_profiles.py"),
+            "test_metadata_library.py", "test_processing_control.py", "test_processing_traffic.py", "test_processing_inventory.py", "test_clouddrive_proxy.py", "test_studio_icon_variants.py", "test_web_settings.py", "test_web_library_shortcuts.py", "test_web_tutorial.py", "test_company_profiles.py"),
     "core": ("test_access.py", "test_auth.py", "test_config.py", "test_field_owners.py",
              "test_entity_classification.py",
              "test_migrations.py", "test_ledger_revision.py",
@@ -186,6 +186,9 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "scripts/fetch_cloudflared_macos.py": ("tooling", "packaging"),
     "scripts/fetch_face_models.py": ("tooling", "packaging"),
     "scripts/cloudflared-macos.json": ("tooling", "packaging"),
+    "scripts/fetch_sparkle_macos.py": ("tooling", "packaging"),
+    "scripts/sparkle-macos.json": ("tooling", "packaging"),
+    "scripts/sparkle_appcast.py": ("tooling", "packaging"),
     "scripts/fetch_ffmpeg_sources.py": ("tooling", "packaging"),
     "scripts/ffmpeg-sources.json": ("tooling", "packaging"),
     "scripts/build_ffmpeg_windows.sh": ("tooling", "packaging"),
@@ -204,8 +207,18 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # 托盘既是 sync 域的服务编排，也被版本与桌面设置那些 tooling 测试读源码。
     "src/peach/tray.py": ("sync", "tooling"),
     "src/peach/menubar.py": ("sync", "tooling"),
+    # Sparkle 更新器由菜单栏持有，打包与发布门槛的测试也直接导入它。
+    "src/peach/sparkle_update.py": ("sync", "tooling", "packaging"),
     # 托盘子服务与隧道的 cloudflared 共用这份 Job Object；两边的测试都要跑到。
     "src/peach/process_job.py": ("tooling", "sync"),
+    'src/peach/task_control.py': ('catalog', 'media', 'metadata', 'follow', 'sync', 'tooling', 'web'),
+    'tests/test_task_control.py': ('media', 'tooling'),
+    'tests/test_task_resources.py': ('media', 'tooling'),
+    'tests/test_resource_platform.py': ('media', 'tooling'),
+    'src/peach/resource_platform.py': ('media', 'tooling', 'web'),
+    'src/peach/gpu_linux.py': ('media', 'tooling', 'web'),
+    'src/peach/task_resources.py': ('catalog', 'media', 'metadata', 'follow', 'sync', 'tooling', 'web'),
+    'src/peach/gpu_usage.py': ('media', 'tooling', 'web'),
     # 托盘重启的实现由 `test_restart_windows_tray.py` 验，模块名推不出来。
     "src/peach/windows_restart.py": ("tooling",),
     # 托盘「重启服务」按路径拉起这个脚本（`--source --force`），托盘测试也要跑到。
@@ -266,6 +279,7 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "src/peach/record_rehome.py": ("catalog", "tooling"),
     "src/peach/web_orphan_records.py": ("catalog", "web"),
     "src/peach/web_library_shortcuts.py": ("catalog", "web"),
+    "src/peach/web_tutorial.py": ("catalog", "web"),
     # 入口页共用件的测试住在首启与配置来源那两份 tooling 测试里。
     "src/peach/web_entry.py": ("catalog", "tooling", "web"),
     # 这几份文档有测试在读它们的正文：改文档也要跑到那条测试。
@@ -661,12 +675,12 @@ def without_ci_frontend_tests(suite: unittest.TestSuite) -> unittest.TestSuite:
 
 def build_suite(*scopes: str, shard_index: int = 0, shard_count: int = 1,
                 assigned_names: Iterable[str] | None = None) -> unittest.TestSuite:
-    """本片的用例。`assigned_names` 是父进程按耗时划好的文件名；不给时按文件名轮转（CI 分片）。"""
+    """本片的用例；本机父进程或 Windows CI 按耗时分配，其余按文件名轮转。"""
     loader = unittest.defaultTestLoader
     suite = unittest.TestSuite()
     files = sorted({path for scope in scopes for path in selected_files(scope)})
     if assigned_names is None:
-        assigned = set(files[shard_index::shard_count])
+        assigned = assigned_files(files, shard_index, shard_count)
     else:
         assigned = {TESTS / name for name in assigned_names}
         if not assigned <= set(files):
@@ -684,6 +698,17 @@ def build_suite(*scopes: str, shard_index: int = 0, shard_count: int = 1,
     finally:
         del sys.path[:2]
     return without_ci_frontend_tests(suite) if ci_frontend_delegated() else suite
+
+
+def assigned_files(files: Iterable[Path], index: int, count: int) -> set[Path]:
+    """Windows 独立 CI 分片共用固定耗时表，本机与未知任务保持原分配。"""
+    files = sorted(files)
+    if (count > 1 and ci_frontend_delegated() and os.environ.get("GITHUB_JOB") == "python"
+            and os.environ.get("RUNNER_OS") == "Windows"):
+        seconds = json.loads((ROOT / "scripts/ci-python-timings.json").read_text(encoding="utf-8"))["seconds"]
+        groups = shard_plan((path.name for path in files), count, seconds, prior_seconds={})
+        return {TESTS / name for name in groups[index]} if index < len(groups) else set()
+    return set(files[index::count])
 
 
 class TimedResult(unittest.TextTestResult):
@@ -844,7 +869,7 @@ PRIOR_SECONDS = {"test_web_e2e.py": 900.0}
 
 
 def shard_plan(names: Iterable[str], shard_count: int,
-               seconds: dict[str, float]) -> list[list[str]]:
+               seconds: dict[str, float], *, prior_seconds: dict[str, float] | None = None) -> list[list[str]]:
     """按预计秒数把测试文件装进分片：先长后短，每个文件放进当前最空的一片。
 
     返回的分片按预计总时长降序排列，派发按这个顺序，最长的先开跑。等负载时按文件数择空。
@@ -854,7 +879,8 @@ def shard_plan(names: Iterable[str], shard_count: int,
     names = sorted(names)
     known = sorted(value for value in seconds.values() if value > 0)
     default = known[len(known) // 2] if known else 1.0
-    weight = {name: max(seconds.get(name.removesuffix(".py"), default), PRIOR_SECONDS.get(name, 0.0))
+    priors = PRIOR_SECONDS if prior_seconds is None else prior_seconds
+    weight = {name: max(seconds.get(name.removesuffix(".py"), default), priors.get(name, 0.0))
               for name in names}
     groups: list[list[str]] = [[] for _ in range(max(1, min(shard_count, len(names))))]
     totals = [0.0] * len(groups)
@@ -1175,7 +1201,7 @@ def run_shard_child(args, requested, scopes, files) -> int:
         temporary.replace(args.timings)
     if args.shard_plan is None:
         # CI 的独立分片没有父进程替它汇总，自己写一次历史。
-        names = [path.name for path in sorted(files)][args.shard_index::args.shard_count]
+        names = sorted(path.name for path in assigned_files(files, args.shard_index, args.shard_count))
         test_history.append(ROOT, scope=f"{' '.join(requested)}:{' '.join(scopes)} "
                             f"shard {args.shard_index + 1}/{args.shard_count}",
                             rows=rows, files=[name.removesuffix(".py") for name in names])

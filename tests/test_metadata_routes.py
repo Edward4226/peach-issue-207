@@ -25,7 +25,7 @@ class ClassifyTests(unittest.TestCase):
                 ('092415_001', 'uncensored'), ('040221-001', 'uncensored'),
                 ('HEYZO-1380', 'uncensored'), ('n0780', 'uncensored'),
                 ('FC2-PPV-1812235', 'fc2'), ('fc2-ppv-1233719', 'fc2'),
-                ('YUJ-103', 'kmib'), ('NOAH-101', 'kmib'),
+                ('AIN-203', 'kmib'), ('NOAH-101', 'kmib'),
                 ('', 'unknown'), (None, 'unknown')):
             with self.subTest(code=code):
                 self.assertEqual(classify(code), expected)
@@ -195,7 +195,7 @@ class MakerEvidenceTests(unittest.TestCase):
         self.assertEqual(route_for_code('ABW-032', overrides=overrides), ('prestige', 'r18dev'))
 
     def test_korean_mib_and_a_missing_code_ask_nobody(self):
-        self.assertEqual(route_for_code('YUJ-103'), ())
+        self.assertEqual(route_for_code('AIN-203'), ())
         self.assertEqual(route_for_code(''), ())
 
     def test_official_and_community_stages_do_not_overlap(self):
@@ -217,7 +217,7 @@ class StageTests(unittest.TestCase):
         self.assertEqual(stages_for_code('300MIUM-1239'), ('amane_official', 'community', 'r18dev'))
         self.assertEqual(stages_for_code('040221-001'), ('community', 'amane'))
         self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'community'))
-        self.assertEqual(stages_for_code('YUJ-103'), ())
+        self.assertEqual(stages_for_code('AIN-203'), ())
 
     def test_stage_members_name_the_sources_the_evidence_files_use(self):
         chain = route_for_code('FC2-PPV-1812235')

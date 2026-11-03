@@ -414,8 +414,8 @@ class SourceChoiceTests(unittest.TestCase):
         self.assertEqual(community_sources_for(""), ())
 
     def test_a_korean_mib_code_asks_nobody(self):
-        """`YUJ-103` 在 JAV 目录站上是另一部片，问回来的值只能靠人一条条认出来。"""
-        self.assertEqual(community_sources_for("YUJ-103"), ())
+        """MIB 番号与日本片同形，问 JAV 目录站拿回的是别的作品，只能靠人一条条认出来。"""
+        self.assertEqual(community_sources_for("AIN-203"), ())
 
 
 if __name__ == "__main__":

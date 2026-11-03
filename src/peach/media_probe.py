@@ -35,10 +35,10 @@ TIMEOUT_SECONDS = 20.0
 #: 入库时同时探几个。网盘挂载上这是延迟受限的元数据读取，开多了只会把 CloudDrive 压住。
 WORKERS = 4
 
-UPDATE = (
-    "UPDATE asset SET duration=?,width=?,height=?,vcodec=?,fps=?,has_audio=?,"
-    "ctx_length=?,ctx_orient=?,ctx_quality=? WHERE id=?"
-)
+#: 探测写的列；文件换了版本时 `record_rehome.CodeRelocator` 按这份清空。
+PROBED_COLUMNS = ("duration", "width", "height", "vcodec", "fps", "has_audio",
+                  "ctx_length", "ctx_orient", "ctx_quality")
+UPDATE = f"UPDATE asset SET {','.join(f'{column}=?' for column in PROBED_COLUMNS)} WHERE id=?"
 _UNMEASURED = f"medium='video' AND duration IS NULL AND location=? AND {ACTIVE_ASSET_SQL}"
 
 
@@ -58,12 +58,15 @@ def context_fields(width: int, height: int, duration: float) -> tuple[str | None
 
 
 def probe_file(ffprobe: str, path: str, timeout: float = TIMEOUT_SECONDS) -> tuple:
+    from .task_control import run as run_task_process
+    from .task_resources import media_input
+    media_input(path)
     from .processing_traffic import CURRENT as TRAFFIC, media_statistics
     if skip_background_read(path):
         raise ValueError('STRM 和 ISO 不执行视频探测')
     from .smb_media import input_url
     path = input_url(path)
-    result = subprocess.run(
+    result = run_task_process(
         [
             ffprobe, "-v", "verbose" if TRAFFIC.get() is not None else "error", "-rw_timeout", "8000000",
             "-select_streams", "v:0", "-show_entries",
@@ -136,8 +139,8 @@ def probe_unmeasured(
     if asset_ids is not None:
         if not asset_ids:
             return 0
-        selected = ' AND id IN (' + ','.join('?' * len(asset_ids)) + ')'
-        parameters += tuple(asset_ids)
+        selected = ' AND id IN (SELECT value FROM json_each(?))'
+        parameters += (json.dumps(list(asset_ids)),)
     with closing(sqlite3.connect(db_path, timeout=30)) as connection:
         rows = connection.execute(
             f"SELECT id,path FROM asset WHERE {_UNMEASURED} AND (path=? OR substr(path,1,?)=?){selected} ORDER BY id",

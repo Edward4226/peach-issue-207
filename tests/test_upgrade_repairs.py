@@ -296,6 +296,24 @@ class UpgradeRepairTests(unittest.TestCase):
         self.service.prepare()
         self.assertEqual(upgrade_repairs._read(self.service.receipt), receipt)
 
+    def test_catalog_upgrade_restores_a_registered_short_serial(self):
+        # #296：旧规则把 `mcdv-24.mp4` 补零成 `MCDV-024`，那是另一部有码片。
+        with self.database.write_transaction() as connection:
+            for key, name, code in ((1, 'mcdv-24.mp4', 'MCDV-024'), (2, 'LAF-41.mp4', 'LAF-041')):
+                connection.execute('INSERT INTO asset(id,location,path,name,medium,code,field_owners,duration) '
+                                   "VALUES(?,'local',?,?,'video',?,?,60)",
+                                   (key, name, name, code, json.dumps({'code': 'scan:filename'})))
+            old = upgrade_repairs.CATALOG_REVISION.replace('catalog-v3', 'catalog-v2')
+            connection.execute('INSERT INTO ledger_upgrade_repair(id,applied_at,result_json) VALUES(?,?,?)',
+                               (old, '1', json.dumps({'revision': old})))
+        self.service.prepare()
+        with self.database.read_connection() as connection:
+            rows = connection.execute('SELECT id,code FROM asset ORDER BY id').fetchall()
+        self.assertEqual([tuple(row) for row in rows], [(1, 'MCDV-24'), (2, 'LAF-041')])
+        receipt = upgrade_repairs._read(self.service.receipt)
+        self.assertIn(1, receipt['media_ids'])
+        self.assertNotIn(2, receipt['media_ids'])
+
     def test_failure_rolls_back_repairs_and_marker_together(self):
         self.asset(1)
         original = upgrade_repairs._catalog_apply
@@ -493,6 +511,25 @@ class UpgradeRepairTests(unittest.TestCase):
             self.assertEqual(receipt['deferred'], [])
             receipt['queued'] = {row.key: index for index, row in enumerate(batch)}
             self.assertEqual(len(self.service._plan(receipt)), 6)
+
+    def test_media_handler_finishes_when_only_media_issues_remain(self):
+        from peach.settings_file import load_config
+        self.contract.upgrade_config = load_config(environ={'PEACH_DATA_ROOT': str(self.root)})
+        with patch('peach.library_processing.process_library', return_value={
+                'status': 'failed', 'outcome': 'partial', 'issue_count': 2,
+                'retryable_asset_ids': [1]}):
+            result = upgrade_repairs._media_run(
+                self.contract, 'upgrade-library:processing-v2:1', Mock())
+        self.assertEqual(result['outcome'], '影片升级补全完成')
+
+    def test_media_handler_retries_later_when_a_source_was_cooling_down(self):
+        from peach.settings_file import load_config
+        self.contract.upgrade_config = load_config(environ={'PEACH_DATA_ROOT': str(self.root)})
+        with patch('peach.library_processing.process_library', return_value={
+                'status': 'failed', 'outcome': 'partial', 'issue_count': 2, 'paused_count': 1,
+                'error': '2 项需要处理，其中 1 项是来源限流', 'retryable_asset_ids': [1]}), \
+                self.assertRaisesRegex(RuntimeError, '来源限流'):
+            upgrade_repairs._media_run(self.contract, 'upgrade-library:processing-v2:1', Mock())
 
     def test_media_handler_resumes_its_own_checkpoint(self):
         from peach.settings_file import load_config

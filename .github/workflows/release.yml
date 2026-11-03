@@ -51,27 +51,20 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
-      - name: 复用固定源码的媒体工具与对应源码包
-        id: media-cache
-        uses: actions/cache@v6.1.0
-        with:
-          key: windows-media-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_ffmpeg_windows.sh', 'scripts/dav1d-mingw64.ini', 'scripts/build_untrunc_windows.sh', 'scripts/fetch_ffmpeg_sources.py', 'scripts/fetch_untrunc_sources.py', 'scripts/ffmpeg-sources.json', 'scripts/untrunc-sources.json') }}
-          path: |
-            build/ffmpeg-windows/ffmpeg
-            build/ffmpeg-windows/ffmpeg-corresponding-source.zip
-            build/untrunc-windows/untrunc
-            build/untrunc-windows/untrunc-corresponding-source.zip
       - name: 安装交叉编译工具
-        if: steps.media-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix mingw-w64-x86-64-dev nasm pkg-config python3 clang meson ninja-build cmake ca-certificates curl xz-utils
-      - name: 构建固定版本媒体工具
-        if: steps.media-cache.outputs.cache-hit != 'true'
-        run: bash scripts/build_ffmpeg_windows.sh build/ffmpeg-windows
-      - name: 构建固定版本索引修复工具
-        if: steps.media-cache.outputs.cache-hit != 'true'
-        run: bash scripts/build_untrunc_windows.sh build/untrunc-windows
+      - name: 核对媒体构建身份
+        id: media-identity
+        run: echo "key=$(python3 scripts/media_build_cache.py windows --github-key)" >> "$GITHUB_OUTPUT"
+      - name: 复用固定源码的媒体工具与对应源码包
+        uses: actions/cache@v6.1.0
+        with:
+          key: ${{ steps.media-identity.outputs.key }}
+          path: build/media-cache/windows-x86_64
+      - name: 校验或构建媒体工具与对应源码包
+        run: python3 scripts/media_build_cache.py windows
       - uses: actions/upload-artifact@v7
         with:
           name: ffmpeg-windows
@@ -303,23 +296,25 @@ jobs:
           uv sync --locked --all-extras --python python
           uv pip check --python .venv/bin/python
           npm ci --prefix frontend
-      # 与 scripts/ci_macos.sh 相同的媒体工具准备：缓存按 media_build_cache.py 的输入与工具链身份核对，
-      # 不一致时在本机重新编译。
-      - name: 复用固定源码的 macOS 媒体工具与对应源码包
-        uses: actions/cache@v6.1.0
-        with:
-          key: macos-media-v1-${{ matrix.arch }}-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg-sources.json', 'scripts/untrunc-sources.json', 'scripts/build_macos_media.py', 'scripts/fetch_ffmpeg_sources.py', 'scripts/fetch_untrunc_sources.py', 'scripts/setup_macos_media_tools.py', 'scripts/media_build_cache.py', 'src/peach/user_agent.py', 'LICENSE') }}
-          path: build/media-cache/macos-${{ matrix.arch }}
       - name: 安装固定版本的媒体编译工具
         run: |
           .venv/bin/python scripts/setup_macos_media_tools.py --root build/macos-media-toolchain
           echo "$PWD/build/macos-media-toolchain/env/bin" >> "$GITHUB_PATH"
-      - name: 构建或复用媒体工具并取得 cloudflared
+      - name: 核对媒体构建身份
+        id: media-identity
+        run: echo "key=$(.venv/bin/python scripts/media_build_cache.py macos --arch '${{ matrix.arch }}' --github-key)" >> "$GITHUB_OUTPUT"
+      - name: 复用固定源码的 macOS 媒体工具与对应源码包
+        uses: actions/cache@v6.1.0
+        with:
+          key: ${{ steps.media-identity.outputs.key }}
+          path: build/media-cache/macos-${{ matrix.arch }}
+      - name: 构建或复用媒体工具并取得 cloudflared 与 Sparkle
         run: |
           for tool in ffmpeg untrunc; do
             .venv/bin/python scripts/media_build_cache.py macos --tool "$tool" --arch '${{ matrix.arch }}'
           done
           .venv/bin/python scripts/fetch_cloudflared_macos.py --arch '${{ matrix.arch }}' --destination "build/media-macos/${{ matrix.arch }}/cloudflared"
+          .venv/bin/python scripts/fetch_sparkle_macos.py --destination "build/media-macos/${{ matrix.arch }}/sparkle"
       - name: 构建独立应用与拖放安装镜像
         run: .venv/bin/python scripts/build_macos_standalone.py --target-arch '${{ matrix.arch }}' --destination release
       - name: 上传 macOS 构建的浏览器 source maps
@@ -388,6 +383,8 @@ jobs:
           test "$(readlink "$mount/Applications")" = /Applications
           test -s "$mount/Peach.app/Contents/Resources/LICENSE"
           codesign --verify --deep --strict "$mount/Peach.app"
+          test -f "$mount/Peach.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+          test ! -e "$mount/Peach.app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices"
           lipo "$mount/Peach.app/Contents/MacOS/Peach" -verify_arch '${{ matrix.arch }}'
           python scripts/smoke_macos.py "$mount/Peach.app"
 
@@ -422,6 +419,70 @@ jobs:
           tail -n +4 ../macos-candidates/scripts/MACOS_DOWNLOADS.md >> RELEASE_NOTES.md
           sha256sum ./*.zip ./*-setup.exe ./*.dmg > SHA256SUMS.txt
           gh release create "$GITHUB_REF_NAME" ./*.zip ./*-setup.exe ./*.dmg SHA256SUMS.txt --verify-tag --prerelease --title "Peach ${VERSION#v} · Windows / macOS 测试版" --notes-file RELEASE_NOTES.md
+
+  # Sparkle 更新源（ADR-0130）：Release 公开之后才写 appcast，下载地址指向同一 Release 的 DMG。
+  # 私钥只在这一个仅标签运行的作业里经标准输入交给官方工具；仓库变量未开启时整个作业跳过。
+  sparkle-appcast:
+    name: macOS 更新源（Sparkle appcast）
+    if: github.ref_type == 'tag' && vars.SPARKLE_APPCAST_ENABLED == 'true'
+    needs: release
+    runs-on: macos-15
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+      PEACH_R2_ACCESS_KEY_ID: ${{ secrets.PEACH_R2_ACCESS_KEY_ID }}
+      PEACH_R2_SECRET_ACCESS_KEY: ${{ secrets.PEACH_R2_SECRET_ACCESS_KEY }}
+      PEACH_R2_ENDPOINT: ${{ secrets.PEACH_R2_ENDPOINT }}
+      PEACH_R2_BUCKET: ${{ vars.PEACH_R2_BUCKET }}
+      PEACH_R2_PUBLIC_BASE: https://downloads.peach.video
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: 取得官方 Sparkle 工具与 rclone
+        run: |
+          uv sync --locked --python python
+          .venv/bin/python scripts/fetch_sparkle_macos.py --destination build/sparkle --tools
+          .venv/bin/python scripts/fetch_release_tools.py --rclone-only
+          echo "PEACH_RCLONE=$PWD/build/release-tools/rclone" >> "$GITHUB_ENV"
+      - name: 生成、核对并发布两个架构的 appcast
+        run: |
+          set -euo pipefail
+          test -n "$SPARKLE_ED_PRIVATE_KEY"
+          version="${GITHUB_REF_NAME#v}"
+          prefix="https://github.com/$GH_REPO/releases/download/$GITHUB_REF_NAME/"
+          feeds=()
+          for arch in arm64 x86_64; do
+            folder="build/feed/$arch"
+            feed="$folder/macos-$arch.xml"
+            mkdir -p "$folder"
+            gh release download "$GITHUB_REF_NAME" --pattern "Peach-$version-macos-$arch.dmg" --dir "$folder"
+            status="$(curl -sS -o "$feed" -w '%{http_code}' "$PEACH_R2_PUBLIC_BASE/sparkle/macos-$arch.xml")"
+            case "$status" in
+              200) ;;
+              404) rm -f "$feed" ;;
+              *) echo "现有 appcast 未取得：HTTP $status"; exit 1 ;;
+            esac
+            printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | build/sparkle/bin/generate_appcast --ed-key-file - \
+              --download-url-prefix "$prefix" --maximum-versions 5 -o "$feed" "$folder"
+            .venv/bin/python scripts/sparkle_appcast.py annotate --appcast "$feed" --version "$version"
+            signature="$(.venv/bin/python scripts/sparkle_appcast.py verify --appcast "$feed" --version "$version" \
+              --dmg "$folder/Peach-$version-macos-$arch.dmg" --url-prefix "$prefix" | .venv/bin/python -c 'import json,sys; print(json.load(sys.stdin)["signature"])')"
+            printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | build/sparkle/bin/sign_update --ed-key-file - \
+              --verify "$folder/Peach-$version-macos-$arch.dmg" "$signature"
+            feeds+=("$feed")
+          done
+          .venv/bin/python scripts/sparkle_appcast.py publish "${feeds[@]}"
 
   # 镜像在演练中构建和验收，标签核对相同 image ID 后发布；发布排在 GitHub Release 成功之后：
   # 桌面包任何一步没发出去，Docker Hub 的版本号与 edge 都不动（ADR-0121）。

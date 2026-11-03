@@ -428,7 +428,7 @@ minnano-av 也在 Cloudflare 后面，但对 HTTP 客户端是间歇拦截：202
 ### 库内采集的节奏
 
 - javdb 的主机间隔由用户定：`library_processing.SOURCE_INTERVALS` 里 `javdb.com` 与 `jdbstatic.com` 都是 3 秒，
-  两个主机要一起改。这份间隔由 `SOURCE_LIMITER` 整个进程共用：资料处理、取想要的资料、取新作资料与订阅检查
+  两个主机要一起改。这份间隔由 `SOURCE_LIMITER` 整个进程共用：资料处理、想要作品资料采集、新作资料采集与订阅检查
   同时跑时，问同一主机仍按一条队排。
 - **FC2 的商品号在三家里只问 javdb**（`community_catalog.community_sources_for`）。本机来源证据里 AVBase 与 JavBus
   对 FC2 一份都没给过；javdb 能补约一半的演员与发行日，厂牌、标签、封面不给，所以它问得慢却砍不掉。
@@ -664,14 +664,16 @@ Instagram 的独立用户登录会话未取得，自动适配器不进正式依�
   近似的别人（`SA-104 → AVSA-104`、`AR-301 → STAR-3016`）。不比对时大部分匹配番号根本不对，整个 MIB 目录
   （韩国内容）曾因此被写上日本厂牌、系列和标题，还靠这些假证据升级成 JAV。
 - 判据是 `catalog_rules.same_release_code()`。它只归一已核验的前缀别名、DMM 的 `h_` 标记、补零和重制尾字母
-  这些良性差异；来源没给 id 的不拦（缺证据不是反证）。复核队列按同一条判据剔候选（ADR-0035）：候选全被剔掉
+  这些良性差异；来源没给 id 的不拦（缺证据不是反证）。补零有例外：`SHORT_SERIAL_PREFIXES` 登记的字母段
+  短号与补零号是两部片（`MCDV-24` 无码、`MCDV-024` 有码），不足三位按原写保留（ADR-0133）。复核队列按同一条判据剔候选（ADR-0035）：候选全被剔掉
   的行整行不进队列，点了也写不进去的东西摆在那儿只是要人再认一遍。
 - javbus 是备选来源（`metadata_policy.FALLBACK_SOURCES`）：同一个字段上还有别家可用时，它的取值不当证据；只有
   它一家时才轮到它。这一步排在番号日期判据之后。剔完之后来源全是官方的字段，自动写入可以替换账本已有的值，
   规则名记 `adr-0035-official-replaces-*`；community 来源仍然只补空（ADR-0035）。
 - 韩国 MIB 的编号（`catalog_rules.KOREAN_MIB_PREFIXES`）资料与封面都不问 JAV 来源。`HA-101`、`MY-102` 撞上番号
   完全相同的日本作品，番号核验照样通过，只能按编号前缀整体不问。刮削、扫描与采集、页面取封面、封面批次和
-  按日志恢复五个入口都按 `is_korean_mib_code()` 拦。封面的跨作品判据同时比字母段和数字段：`YUJ-101 → yuj00011`、
+  按日志恢复五个入口都按 `is_korean_mib_code()` 拦。前缀表的来源分批写在代码注释里；`YUJ` 是 Attackers 的系列，
+  已移出（ADR-0133）。封面的跨作品判据同时比字母段和数字段：`YUJ-101 → yuj00011`、
   `435MFC-135 → h_1711mfcc00027` 字母对上、数字不对，都是别的片。
 - `catalog_rules.code_query_variants()` 只扩展搜索词，每次返回都以账本原始编号校验，缓存和网络结果同样受检。
 
@@ -706,7 +708,7 @@ Instagram 的独立用户登录会话未取得，自动适配器不进正式依�
   文件名前缀，用 EUC-JP 页名直取两站（取页层是补别名后继的 `WikiSitePages`，页缓存、404 记忆与来源冷却与服务共用）。
   同名页是 3 位以上出演者的作品一览就记 `identity=release` 的 observed 并否掉 `unknown`；都不存在时 unknown 候选写明
   问过哪几页；没有页以外的取页失败是未取得，不进清单。清单交 `apply_entity_identity_research.py` 冻结预览、备份写入。
-  处理任务结束时「查创作者身份」后继按同一判据自动问新登记和存量的创作者，命中直接落批次来源的 observed（ADR-0098）。
+  处理任务结束时「创作者身份查找」后继按同一判据自动问新登记和存量的创作者，命中直接落批次来源的 observed（ADR-0098）。
   改实体类型仍是用户复核。裏DVD村（uradvd-mura.com）是带会员登录的 DVD／下载商店，没有按页名寻址的系列页，
   未接入，只作人工查证线索。
 
@@ -1399,7 +1401,7 @@ FANZA／DMM、MGStage、一本道同族、Tokyo-Hot、AVBase、javtrailers、One
 ## 番号样张
 
 女优页照片档里按番号摆的官方样张（ADR-0068）。读写与取页在 `peach.sample_images`，补齐在 `peach.sample_followup`（任务中心
-「补番号样张」）。
+「番号样张采集」）。
 
 - 只认发行方自己那几站：
   - 有码是 DMM / FANZA 的 `jp-N`。GraphQL 给的 `awsimgsrc…/pics_dig/…/<cid>-N.jpg` 是 120×90 小图，同目录 `<cid>jp-N.jpg` 才是

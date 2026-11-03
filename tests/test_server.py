@@ -6,7 +6,7 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from peach import server, settings_file
 from starlette.requests import Request
@@ -53,9 +53,31 @@ class ServerTests(unittest.TestCase):
                 patch.object(cli, "_build_sync", return_value=None), \
                 patch.object(cli, "create_app"), patch.object(cli, "TUNNEL_ENABLED", False), \
                 patch("peach.mdns.lan_ipv4", side_effect=OSError("no route")) as route, \
-                patch("uvicorn.run"):
+                patch.object(cli, "_run_uvicorn"):
             self.assertEqual(cli.main(["serve", "--host", "0.0.0.0", "--no-mdns"]), 0)
         route.assert_not_called()
+
+    def test_every_served_listener_gets_the_handler_that_can_listen_again(self):
+        """客户端在 accept 完成前断开、监听被标准库关掉时，处理器要拿着 uvicorn 的 Server 才能重新监听。"""
+        import asyncio
+        from peach import cli, error_reporting
+        handlers = []
+        for arguments in (["serve", "--host", "0.0.0.0", "--no-mdns"],
+                          ["serve", "--host", "0.0.0.0", "--port", "80", "--redirect-origin", "https://peach.test"]):
+            handlers.clear()
+            with self.subTest(arguments=arguments), \
+                    patch.object(cli, "_require_readable_settings"), \
+                    patch.object(cli, "_serve_token", return_value="test"), \
+                    patch.object(cli, "_build_sync", return_value=None), \
+                    patch.object(cli, "create_app"), patch.object(cli, "TUNNEL_ENABLED", False), \
+                    patch("uvicorn.Config") as config, patch("uvicorn.Server") as uvicorn_server:
+                config.return_value.get_loop_factory.return_value = None
+                uvicorn_server.return_value.serve = AsyncMock(
+                    side_effect=lambda: handlers.append(asyncio.get_running_loop().get_exception_handler()))
+                self.assertEqual(cli.main(arguments), 0)
+                handler, = handlers
+                self.assertIs(handler.func, error_reporting.asyncio_handler)
+                self.assertEqual(handler.keywords, {"uvicorn_server": uvicorn_server.return_value})
 
     def test_initialization_preserves_existing_configuration(self):
         with tempfile.TemporaryDirectory() as directory:

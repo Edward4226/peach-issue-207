@@ -101,14 +101,20 @@
 | `/stats` | 统计 |
 | `/taste` | 口味分析 |
 | `/review` | 人工复核 |
-| `/data-cleanup` | 数据管理 |
+| `/data-cleanup` | 数据管理概览；日常扫描、待处理摘要、维护与清理入口 |
+| `/data-cleanup/organize` | 文件整理与批次历史 |
+| `/data-cleanup/resource-sync` | 核对文件与馆藏记录，清理失效条目、空目录与缓存 |
+| `/data-cleanup/orphan-records` | 处理文件已丢失但仍保留个人记录的作品 |
+| `/data-cleanup/media-repair` | 媒体修复 |
+| `/data-cleanup/links` | 链接检查与失效地址复核 |
+| `/data-cleanup/batch-delete` | 按女优批量永久删除关联影片 |
 | `/duplicates` | 重复文件 |
 | `/quality-goals` | 高清版目标 |
 | `/login` | 登录 |
 
 设置分区可直接打开、刷新和用浏览器前进后退。偏好面板从当前页面打开时保留背景；配置分区复用配置页及其权限检查。配置分类导航停在搜索栏下方，切换分类时显示所选分区的开头。
 
-用户脚本通过专用令牌调用 `POST /api/jav-browser/errors`，仅接收白名单错误字段并写入本机日志；批次、体积、限频与诊断包范围见 [浏览器添加 JAV](JAV_BROWSER.md)。状态接口 `GET /api/jav-browser` 同时投影真实下载与整理进度，不授予配置、账号或账本写入权限。
+用户脚本通过专用令牌调用 `POST /api/jav-browser/errors`，仅接收白名单错误字段并写入本机日志；批次、体积、限频与诊断包范围见 [浏览器添加 JAV](JAV_BROWSER.md)。状态接口 `GET /api/jav-browser` 同时投影真实下载与整理进度，`GET /api/jav-browser/active` 以同一结构列出进行中与最近结束的任务，均不授予配置、账号或账本写入权限。`POST /api/jav-browser/postprocess` 只能重试该番号已失败的整理，走任务中心同一入口。
 
 `GET /api/client-updates` 要求应用鉴权，返回运行版本与构建标记、发行版检查结果、安装状态、用户脚本版本和自动补修状态，不触发外部检查。`GET /api/jav-browser/updates` 使用用户脚本专用令牌，无需番号，返回运行与发行版、脚本版本快照，不暴露补修明细。`POST /api/configuration/upgrade-repairs/retry` 限本机同源请求，重试失败项；`GET /api/configuration/upgrade-repairs/review` 限本机管理权限，下载 JSON 复核记录，无记录时返回 404。
 
@@ -131,7 +137,7 @@
 | `/follow-manage` | `/subscriptions` |
 | `/configuration` | `/settings/library` |
 | `/diagnostics` | `/settings/diagnostics` |
-| `/resource-sync` | `/data-cleanup#resource-sync` |
+| `/resource-sync` | `/data-cleanup/resource-sync` |
 
 兼容跳转保留查询参数；后退前进的背景信息留在历史条目中。索引尾斜杠跳到无尾斜杠路径。
 

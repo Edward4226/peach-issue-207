@@ -2,7 +2,7 @@
 (function() {
 	try {
 		var e = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, t = new e.Error().stack;
-		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "e0055ad0-274c-46a6-a955-4d9fcf067df8", e._sentryDebugIdIdentifier = "sentry-dbid-e0055ad0-274c-46a6-a955-4d9fcf067df8");
+		t && (e._sentryDebugIds = e._sentryDebugIds || {}, e._sentryDebugIds[t] = "7cdc75c1-d208-4269-a11d-a59e149e9282", e._sentryDebugIdIdentifier = "sentry-dbid-7cdc75c1-d208-4269-a11d-a59e149e9282");
 	} catch {}
 })();
 var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
@@ -19504,10 +19504,10 @@ function Hm({ children: e }) {
 }
 function Um({ divided: e = !1, children: t }) {
 	return e ? /* @__PURE__ */ (0, z.jsx)("div", {
-		className: "flex flex-col gap-4 border-t border-separator-border py-4 pr-3 empty:hidden",
+		className: "flex flex-col gap-4 border-t border-separator-border py-4 pr-3 empty:hidden [&>.ui-settings-facts]:-mr-3",
 		children: t
 	}) : /* @__PURE__ */ (0, z.jsx)("div", {
-		className: "flex flex-col gap-4 py-4 pr-3 empty:hidden",
+		className: "flex flex-col gap-4 py-4 pr-3 empty:hidden [&>.ui-settings-facts]:-mr-3",
 		children: t
 	});
 }
@@ -21568,6 +21568,7 @@ var I_ = [
 ];
 function z_({ name: e, value: t, onChange: n }) {
 	return /* @__PURE__ */ (0, z.jsx)(w_, {
+		"data-guide-target": "library-policy",
 		className: "w-full",
 		"aria-label": `${e} 处理方式`,
 		selectedKey: t,
@@ -22655,4 +22656,4 @@ E();
 var cv = document.getElementById("peach-page"), lv = cv ? sv[cv.dataset.page ?? ""] : void 0;
 cv && lv && (0, M.createRoot)(cv).render(/* @__PURE__ */ (0, z.jsx)(lv, { data: { ...cv.dataset } }));
 
-//# debugId=e0055ad0-274c-46a6-a955-4d9fcf067df8
+//# debugId=7cdc75c1-d208-4269-a11d-a59e149e9282

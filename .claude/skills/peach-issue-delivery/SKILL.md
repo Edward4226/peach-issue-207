@@ -5,12 +5,12 @@ description: Peach 收集或汇总用户反馈、代码交付、issue 与 PR、�
 
 # 反馈、Issue 交付与验证
 
-最后复核：2026-10-29
-证据来源：用户确认的维护者 PR 流程、相关修复合为一个 PR 的要求、反馈来源与优先级约定、[issue #95](https://github.com/peach-mitao/peach/issues/95)、[PR #96](https://github.com/peach-mitao/peach/pull/96)、[项目看板状态判据](../../../scripts/project_board.py)。
+最后复核：2026-11-03
+证据来源：用户确认的维护者 PR 流程、相关修复合为一个 PR 的要求、反馈来源与优先级约定（2026-11-03 用户确认 GitGud 不收反馈）、[issue #95](https://github.com/peach-mitao/peach/issues/95)、[PR #96](https://github.com/peach-mitao/peach/pull/96)、[项目看板状态判据](../../../scripts/project_board.py)。
 
 ## 反馈收集与汇总
 
-- 来源包括 GitHub issue（含评论与反应）、Discussions（全部分类，含评论与回复）、社区 PR、GitGud issue、Telegram 反馈群聊和 X 提及与回复，只读其中一处不算收齐；读不到的来源写明「未取得」及原因。Discussions 不在 `gh issue` 与 `gh pr` 的输出里，要用 GraphQL `repository.discussions` 读取。
+- 来源包括 GitHub issue（含评论与反应）、Discussions（全部分类，含评论与回复）、社区 PR、Telegram 反馈群聊和 X 提及与回复，只读其中一处不算收齐；GitGud 只存代码与构建，不收反馈，不必读取；读不到的来源写明「未取得」及原因。Discussions 不在 `gh issue` 与 `gh pr` 的输出里，要用 GraphQL `repository.discussions` 读取。
 - 「汇总」指一份带优先级和修复批次的总表，不是逐条摘要。每条都要判断：本地是否已修复、属于需求还是缺陷、轻重缓急、马上修还是先讨论、适合放在哪个版本、关联 PR 能否直接合。
 - 已修复与否，逐条对照 `CHANGELOG.md` 的已发布版本和「未发布」段、主线提交与当前代码；没核实的写「未核实」，不凭 issue 开闭状态推断。建单日期晚于修复版本时，要先确认报告者的版本。
 - 报告之间可能互相包含，要按问题合并，不能只按编号去重。写明报告人数、编号、关联的社区 PR 和还缺的复现信息。
@@ -42,7 +42,7 @@ description: Peach 收集或汇总用户反馈、代码交付、issue 与 PR、�
 - 分别确认代码合并、CI 结果、修复产物发布和 issue 验收；每项结论只使用对应证据。
 - 汇总的发布状态绑定候选提交和实际制品；标签已打或版本段已改不能批量转为「已发布」。发布失败保留已合入状态，成功后只推进候选真正包含的修复。
 - 问题依赖特定硬件、部署环境或报告者确认时，通用测试、CI 通过和镜像发布不能代替该验证。必要验证未完成时保持 issue 开放；修复产物可供测试时使用 `status:needs-verification`。
-- 尚需验证的 issue，在 PR 正文中用独立的 `Refs #编号` 行关联，跨仓库使用 `Refs owner/repo#编号`。此格式也供项目看板识别实现关联。
+- 尚需验证的 issue，在 PR 正文中用独立的 `Refs #编号` 行关联，跨仓库使用 `Refs owner/repo#编号`。此格式也供项目看板识别实现关联；`integrate` 把这类独立行连同 PR 号写进合并提交。
 - 检查 PR 正文、提交消息以及合并时采用的消息，避免用 `Fixes`、`Closes`、`Resolves` 等关键词触发尚需验证的 issue 自动关闭。
 - 关闭前取得覆盖问题验收条件的实际验证证据，或用户明确要求关闭。证据写清测试环境、修复版本、结果与未覆盖范围；不得把未覆盖范围说成已验证。
 - 若 issue 被自动关闭且必要验证未完成，重新打开并恢复适用标签；无需为修正状态自动追加评论。

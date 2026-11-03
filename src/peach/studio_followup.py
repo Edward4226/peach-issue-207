@@ -31,7 +31,7 @@ from .followups import Attempts, Followup, FollowupType, attempts_root, register
 
 #: 这类后继在任务中心的身份，也是活动页上那一行的名字来源。
 TASK_KEY = "studio-mark"
-TASK_LABEL = "补厂牌官网与标识"
+TASK_LABEL = "厂牌官网与标识补全"
 
 #: 这条后继写下的一切都带这个归属串，撤回按它认。
 SOURCE = "auto:studio-mark"

@@ -7,7 +7,7 @@
 就是二十张一模一样的卡片；键里带着这一批的番号，重跑、去重都按这一批算。
 
 **补封面单独排队。** 资料已经齐、只缺本机封面的壳不进取资料那一批，而是另派一条
-`feed-cover`（补新作封面）：它只取图、不问资料来源、不写账本，走自己的通道。资料来源
+`feed-cover`（新作封面采集）：它只取图、不问资料来源、不写账本，走自己的通道。资料来源
 连不上时取资料每部要等一轮超时，补封面若跟在后面，旧壳会被源源不断的新番号挤到轮不上。
 排在队里或正在跑的番号（`in_flight`）不再进下一批，两种批次也互不重复。
 
@@ -39,9 +39,9 @@ from .followups import Followup, FollowupType, register
 from .metadata import extract_peach_fields
 
 TASK_KEY = "feed-scrape"
-TASK_LABEL = "取新作资料"
+TASK_LABEL = "新作资料采集"
 COVER_TASK_KEY = "feed-cover"
-COVER_TASK_LABEL = "补新作封面"
+COVER_TASK_LABEL = "新作封面采集"
 LABELS = {TASK_KEY: TASK_LABEL, COVER_TASK_KEY: COVER_TASK_LABEL}
 
 #: 一条资料够用就停。四个标量都拿到就不再问下一家——Feed 是后台跑的，

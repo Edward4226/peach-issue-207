@@ -54,6 +54,7 @@ class DownloadPostprocessTests(unittest.TestCase):
         self.plan = patch.object(post.organize, 'build_plan', return_value=plan)
         self.plan.start()
         self.addCleanup(self.plan.stop)
+        self.collect_source = post._collect
         collect = patch.object(post, '_collect', return_value={'candidates': 0})
         collect.start()
         self.addCleanup(collect.stop)
@@ -160,6 +161,30 @@ class DownloadPostprocessTests(unittest.TestCase):
         task = self.store.get(self.task.id)
         self.assertEqual((task.postprocess_state, task.postprocess_detail), ('queued', '等待扫描与采集完成后继续'))
         self.contract.task_runs.enqueue_followups.assert_not_called()
+
+    def test_collection_held_only_by_paused_sources_still_organizes_the_file(self):
+        """MIAB-086：其余资料已落库，只差一站拒绝访问；文件照常整理，详情写明哪项等来源恢复。"""
+        held = {'status': 'failed', 'error': '1 项都卡在来源限流上，等一会儿再跑一次。',
+                'issue_count': 1, 'paused_count': 1,
+                'issue_preview': [{'message': 'JavDB 标签未取得：来源拒绝访问'}]}
+        # 账本就在临时根下，配置的各目录都指回它。
+        config = SimpleNamespace(configured=True, directory=lambda name: self.root)
+        self.contract.cover_root = self.root / 'covers'
+        with patch.object(post.settings_file, 'active', return_value=config), \
+                patch.object(post, 'process_library', return_value=held):
+            state = self.collect_source(self.contract, self.asset_id, self.handle)
+        self.assertEqual(state['paused_pending'], ['JavDB 标签未取得：来源拒绝访问'])
+        with patch.object(post, '_collect', return_value=state):
+            result = self.run_task()
+        self.assertEqual(result['moved'], 1)
+        task = self.store.get(self.task.id)
+        self.assertEqual(task.postprocess_state, 'complete')
+        self.assertIn('JavDB 标签未取得：来源拒绝访问', task.postprocess_detail)
+        # 混有来源限流以外的问题时照旧失败，等人处理。
+        with patch.object(post.settings_file, 'active', return_value=config), \
+                patch.object(post, 'process_library', return_value={**held, 'issue_count': 2}):
+            with self.assertRaisesRegex(RuntimeError, '来源限流'):
+                self.collect_source(self.contract, self.asset_id, self.handle)
 
     def test_metadata_or_organization_failure_never_dispatches_followups(self):
         self.handle.run_id = 123

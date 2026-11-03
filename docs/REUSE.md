@@ -1,5 +1,25 @@
 # 复用清单
 
+## 跨平台任务资源计量
+
+继续使用 psutil 7.2.2 读取进程 CPU 时间和身份。该版本的 macOS 线程列表使用序号，不能与 Python 原生线程 ID 对应；因此使用系统 `libproc` 的 `PROC_PIDTHREADID64INFO` 取得指定线程的纳秒时间，接口与单位见 [XNU 实现](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/bsd_kern.c)。Linux 的可用 CPU 容量复用亲和性、控制组成员和挂载信息，按可见 cgroup v1/v2 配额归一化。
+
+Linux GPU 读取 [DRM fdinfo 标准](https://docs.kernel.org/gpu/drm-usage-stats.html)的客户端、设备和引擎忙碌时间；重复描述符去重，计数回退保持高水位，进程重用重新采样。容器沿用当前设备与 PID 命名空间，不要求宿主 PID 权限。macOS 和未提供该计数的 Linux 驱动明确显示未取得，不使用整机 GPU 占用替代任务。实现只调用系统接口，无新增依赖；测试覆盖平台接口、配额、权限、重复客户端和原生线程时间增长。
+
+## 数据管理层级
+
+数据管理首页按待处理事项看板、扫描与采集、整理与维护、清理与删除排列。日常扫描直接操作，其余工具在独立二级页展开表单和清单；首页只读摘要。工具名称、顺序和地址由 `frontend/src/cleanup-tools.ts` 供首页、路由、面包屑与加载态共用。已分享的工具锚点转到对应二级页，保留查询参数。
+
+数字驱动的人工复核、重复文件、垃圾文件、高清版和回收站在顶部组成看板，复用 `PlainStat` 的大数字样式。整理、维护和批量删除共用 `CleanupEntryCard` 的功能入口样式；首屏加载态复用同一套卡面。入口不执行删除，危险样式留给二级页的执行按钮和确认窗口。
+
+## 按女优删除影片
+
+数据管理页的「批量删除」复用 `DataTable` 的排序、分页和跨页勾选、女优名册的姓名与头像装配、`confirmModal()`、`purge_assets()` 和缓存清理入口，不新增依赖。`/api/performer/delete-plan` 按所选实体 ID 的并集列出全部视频，包括回收站记录；多人共同出演的文件去重。执行前在写锁内核对清单摘要，关联、路径或记录版本变化时拒绝旧清单。永久删除沿用媒体先隔离、账本失败恢复、文件失败保留记录的顺序，保留女优档案、照片与其他人物的独立影片；多人出演的同一文件会从所有关联人物的作品中消失。
+
+## 教程中心与界面导览
+
+复用 [Driver.js](https://driverjs.com/) `1.10.2`（MIT）的遮罩、箭头和边缘避让，正文与操作复用 Peach 的 React、BoardUI 和弹层组件。步骤绑定组件锚点，布局变化调用 `refresh()`；设置路由复用当前路由定义。教程状态复用账本 `profile.settings_json` 和现有读写事务，通过 `/api/tutorial-progress` 按动作更新，所有设备共用。入口、提示版本与维护边界见 [教程中心](ONBOARDING.md)。
+
 ## 首页筛选聚合与缓存
 
 采用 bbingz 的 [PR #205](https://github.com/peach-mitao/peach/pull/205)，固定来源提交 `bbf5aac8e9562211c324c2019bff35888266df84`，许可证沿用本项目 AGPL-3.0-or-later。作品筛选集合先在独立子查询中求出，创作者、标签和演员按既有关系聚合，保留去重计数与标签可见性。没有选中标签时移除无效 `tag_match`，复用既有修订缓存、同键锁与跨连接写入失效机制，不在线改写 SQLite 统计或增加索引迁移。
@@ -14,7 +34,7 @@ YuNet 与 SFace 沿用既有模型哈希校验，Python 读取模型字节后交
 
 ## 浏览器添加的本地人物资料
 
-`/api/jav-browser/people` 复用现有专用令牌与浏览器权限检查、规范实体关联和男优排除判据。人物名只读本地账本与发现资料快照；查询单个番号时还可带上详情页的出演者名字，按既有 `resolve_entity` 先规范名后唯一别名匹配，括号里的别名一并尝试，未匹配的只返回名字。头像通过既有 `PreviewService.entity_image` 查找已安装文件，按 `avatar_focus` 的人脸记录沿用 `frontend/src/card-art/face-frame.ts` 的放大与夹持判据取景；已有 Pillow 将其在内存缩为 64px JPEG，不落新头像、不抓外站。未初始化发现资料服务时直接读取快照，避免初始化恢复外站任务。缺头像省略图片字段，缺人物信息返回空数组，接口失败与正常缺失分别反馈。用户脚本显示灰底首字母，不显示作品封面，无新增依赖。
+`/api/jav-browser/people` 复用现有专用令牌与浏览器权限检查、规范实体关联和男优排除判据。人物名只读本地账本与发现资料快照；查询单个番号时还可带上详情页的出演者名字，只在账本与快照都没有人物时使用（素人作品入库后账本记真名、页面仍写店铺艺名，不能算成两人），按既有 `resolve_entity` 先规范名后唯一别名匹配，括号里的别名一并尝试，未匹配的只返回名字。头像通过既有 `PreviewService.entity_image` 查找已安装文件，按 `avatar_focus` 的人脸记录沿用 `frontend/src/card-art/face-frame.ts` 的放大与夹持判据取景；已有 Pillow 将其在内存缩为 64px JPEG，不落新头像、不抓外站。未初始化发现资料服务时直接读取快照，避免初始化恢复外站任务。缺头像省略图片字段，缺人物信息返回空数组，接口失败与正常缺失分别反馈。用户脚本显示灰底首字母，不显示作品封面，无新增依赖。
 
 ## README Star 图
 
@@ -174,6 +194,8 @@ npm 安装沿用 Node.js 24 LTS 附带的官方 [`npm ci`](https://docs.npmjs.co
 
 ## 状态与同步弹窗
 
+导航位置由 `history/page-navigation.ts` 统一保存与恢复，同一标签页保留各栏目的筛选、分页和内容缓存；普通栏目往返平滑恢复位置，双击导航请求回顶。左侧导航排序复用 `moveSidebarKey` 与现有设置保存入口，指针移动只更新插入提示和避让，松手时保存一次；键盘使用 Alt + 方向键。动效参数与证据边界见[导航拖动参考](reference-snapshots/kubai-sidebar-reorder.md)，未新增依赖。
+
 全站滚动区通过 `observeScrollRegions` 按实际 `overflow` 接入现有 `attachOverlayScrollbar`，动态新增子树、样式启用和响应式布局复用同一入口；样式读取与轨道写入分批，行内样式变化只复核当前元素。普通内容区使用同级轨道，定位浮层与原生顶层内的轨道保持在自身层级并补偿滚动位置。组件卸载释放监听、观察器及轨道。横向手势导航保留 `wireHorizontalScroller` 的拖动和渐隐。路由冒烟统一检查所有实际溢出的滚动区，搜索回归覆盖滑块拖动、滚轮、关闭重开和轨道数量。没有新增依赖。
 
 来源筛选与所有表格的显示列弹层共用 `SelectionPopover`，组合现有 React Aria `Popover`、`MenuDialog`、BoardUI `Checkbox` 和按钮。宽度由选项和操作组的内容决定，并受视口上限约束；长选项在限宽内折行。选项靠近触发器，批量操作根据 React Aria 的实际展开方向放在远端，DOM 顺序随之调整。`SelectionActions` 区分短操作并排与长操作铺满整行；来源筛选附带箭头的 `LinkButton` 凭据链接，列设置保留显示全部和默认显示。复核作品样本的全选、清空也复用同一操作条，保留计数及禁用条件。颜色配色器与人物说明浮层的交互含义不同，继续使用各自组件。没有新增依赖。
@@ -196,7 +218,7 @@ npm 安装沿用 Node.js 24 LTS 附带的官方 [`npm ci`](https://docs.npmjs.co
 
 ## 浏览器错误的构建映射
 
-前端复用官方 [`@sentry/vite-plugin` 11.8.0](https://github.com/getsentry/sentry-javascript-bundler-plugins)（MIT，维护中，Node ≥23.2，与项目 Node 24 和 Vite 8 兼容）生成确定性 Debug ID 与 hidden source maps；[`@sentry/cli` 3.8.0](https://github.com/getsentry/sentry-cli)（FSL-1.1-MIT）仅用于构建期本地定位和显式上传。两者精确固定在前端开发依赖，纳入现有 Dependabot；不进入 Python 运行时或独立包依赖。
+前端复用官方 [`@sentry/vite-plugin` 11.8.0](https://github.com/getsentry/sentry-javascript-bundler-plugins)（MIT，维护中，Node ≥23.2，与项目 Node 24 和 Vite 8 兼容）生成确定性 Debug ID 与 hidden source maps；[`@sentry/cli` 3.8.0](https://github.com/getsentry/sentry-cli)（FSL-1.1-MIT）仅用于构建期本地定位和显式上传。两者精确固定在前端开发依赖，纳入现有 Dependabot；不进入 Python 运行时或独立包依赖。插件的 `@sentry/bundler-plugins` 声明 glob `^13`，经它引入的 minimatch 10 有拒绝服务告警（GHSA-g3hv-75wg-m249），修复只在 minimatch 11；插件只用 `glob()` 的 `absolute`、`nodir`、`ignore`、`root` 选项，`frontend/package.json` 的 `overrides` 将其 glob 固定为 14.0.3。插件自身声明 glob 14 后移除这条 override。
 
 `frontend/scripts/sentry-build.ts` 只保留 Peach 的公开／私有目录边界与产物匹配检查。官方插件禁用遥测、自动上传与 release 注入，普通构建不需要凭据；私有目录保存 JS/CSS/maps，公开目录只复制四个正式 JS/CSS。显式上传复用官方 CLI，先核对分发字节和 map 身份。没有实现自定义 source map 编解码器或上传协议，也没有为此引入浏览器 SDK、页面回放或性能采集。
 
@@ -431,7 +453,7 @@ FC2 卖家名册复用 `sources/fc2.py` 的 `label`、`seller_url` 来源契约�
 
 JAV 发现卡复用馆藏的 `data-media-card` 网格与悬停面、`coverImage` 封面取景、`cardRatio` 大小图比例和 `feedIdentity` 身份头像；筛选复用 `FilterGlassRows`、`FilterPill`、`Segments` 与 `SortKeys`。出演者引用由 `web_catalog.entity_ref` 提供图片版本与取景；标题保留两行，操作区贴底。发现查询复用口味汇总与 `related.rank_related` 的 IDF/MMR，输出相关度和实际选择分，支持口味、发行日期、来源评分、时长、番号排序。来源资料复用 `PublicAPI`、`BackgroundJob(runs=None)`、`fsutil.atomic_write_text` 与标准库 `ContextVar`；固定至多 100 部，真实 HTTP 预算 202 次、16 MiB、900 秒，3 秒串行间隔。资料边车有效期 6 小时、最多 2,048 条、失败冷却 15 分钟，完成或停止后由显式刷新续跑。`WantMagnets` 以 `queryUrl` 共用作品详情和想要清单的资源布局，按资源区容器宽度排列操作，缓存按来源分开，容量复用 `fmtSize`。JAV 与名册的静态搜索框复用 `islandSearchInput`。资料扩展见 [JAV 发现](JAV_DISCOVERY.md)，无新增依赖。
 
-JAV 作品详情与馆藏视频共用 `IdentityCell` 的头像、标识和首字回退，标题折叠复用 `useFoldedTitle`。厂牌大小写唯一匹配与 `sources.javdb.maker_writing` 的日英组合解析只用于来源身份投影，标识按规范名读取。评论、资源复用 `Disclosure` 和 `setCollapseOpen`；来源与评论评分共用按小数裁切填充的星星。桌面右栏以 `contain:size` 排除正文的固有高度贡献，媒体区决定框体高度，正文在右栏内滚动。写操作取 `/healthz` 的账本只读状态，与运行配置权限分别处理。图片切换由 `MediaCarousel` 同时服务关注、库外 JAV 与馆藏详情，提供环形翻页、横向缩略图和位置圆点。缩略图与圆点复用浏览器原生 `overflow-x:auto`、`wireHorizontalScroller`，选中项在切图、循环和容器缩窄时保持可见。缩略图使用 `IntersectionObserver` 按可见范围挂载，馆藏经 `/sample-thumb`，来源图片共享查询缓存，关注优先取附件小图；Swiper 14.3.0 留给灯箱。馆藏样张复用 `sample_images.detail_refs` 和 `/sample-image`，`/api/item` 只读本地序号、最多 30 项；查看图片暂停正片，返回保留位置。推荐分标签复用 BoardUI `Chip` 与共享 Tooltip。视频预览的 `mountPreviewPlayer` 复用已固定的 Video.js 10.2.0（Apache-2.0）、官方 HLS 媒体组件、`mountPlayerQualityControl`、`mountPlayerSeekPreview` 和 `mountPlayerSpinner`，安装共用控制条、设置、时间、音量与窄宽度折叠。来源给定的 HLS 直接由播放器请求；片源代理、馆藏 ID 和观看上报沿用各自入口。播放器生命周期由当前详情管理，异步加载完成前离开会取消挂载，切换与关闭会停止并销毁实例。
+JAV 作品详情与馆藏视频共用 `IdentityCell` 的头像、标识和首字回退，标题折叠复用 `useFoldedTitle`。厂牌大小写唯一匹配与 `sources.javdb.maker_writing` 的日英组合解析只用于来源身份投影，标识按规范名读取。评论、资源复用 `Disclosure` 和 `setCollapseOpen`；来源与评论评分共用按小数裁切填充的星星。桌面右栏以 `contain:size` 排除正文的固有高度贡献，媒体区决定框体高度，正文在右栏内滚动。写操作取 `/healthz` 的账本只读状态，与运行配置权限分别处理。图片切换由 `MediaCarousel` 同时服务关注、库外 JAV 与馆藏详情，提供环形翻页、横向缩略图和位置圆点。缩略图与圆点复用浏览器原生 `overflow-x:auto`、`wireHorizontalScroller`，选中项在切图、循环和容器缩窄时保持可见。缩略图使用 `IntersectionObserver` 按可见范围挂载，馆藏经 `/sample-thumb`，来源图片共享查询缓存，关注优先取附件小图；Swiper 14.4.0 留给灯箱。馆藏样张复用 `sample_images.detail_refs` 和 `/sample-image`，`/api/item` 只读本地序号、最多 30 项；查看图片暂停正片，返回保留位置。推荐分标签复用 BoardUI `Chip` 与共享 Tooltip。视频预览的 `mountPreviewPlayer` 复用已固定的 Video.js 10.2.0（Apache-2.0）、官方 HLS 媒体组件、`mountPlayerQualityControl`、`mountPlayerSeekPreview` 和 `mountPlayerSpinner`，安装共用控制条、设置、时间、音量与窄宽度折叠。来源给定的 HLS 直接由播放器请求；片源代理、馆藏 ID 和观看上报沿用各自入口。播放器生命周期由当前详情管理，异步加载完成前离开会取消挂载，切换与关闭会停止并销毁实例。
 
 卡片多选由 `MediaCard`、`FollowCard` 的 `selectMode` 统一控制：保留选择入口，单项保存、已看、忽略、稍后看、预览跳转和回收站操作不挂载；退出多选恢复单项操作。首页、实体页、关注与回收站沿用同一组组件。
 
@@ -481,9 +503,9 @@ Peach 播放器皮肤直接装饰 Video.js 10 的 light DOM：右侧控制组用
 
 启动取证复用 Python 3.14 标准库的 `sys.excepthook`、`threading.excepthook`、`sys.unraisablehook`、`logging.Handler`、`faulthandler` 和 `zipfile`（PSF 许可，无额外安装体积）。`error_reporting` 在配置与第三方依赖之前加载，`support_bundle` 仅收集选定日志和系统字段；Peach 保留脱敏、备用目录、本机权限与报告内容策略。已有诊断报告用于页面和运行期导出。临时目录与独立子进程覆盖无控制台、导入失败、线程异常、备用目录、配置损坏和脱敏。
 
-可选远程诊断复用官方 [sentry-sdk 2.72.0](https://github.com/getsentry/sentry-python/tree/2.72.0)（MIT，维护中，支持 Python 3.14）；固定版源码通过 `opensrc path pypi:sentry-sdk` 核对。SDK 负责后台 HTTP、TLS、Sentry 信封和服务端限流；Peach 负责本机选择、技术字段投影、同类错误聚合与每机每日上限。版本统计与错误诊断共用默认勾选的开关，关闭时不构造 SDK；SDK 全局自动集成、追踪、回放、日志、会话与指标采集均关闭。`HttpTransport._send_envelope` 的窄覆盖在真正发送前复查本机选择版本并移除本机传输元数据；它是固定版本的内部接口，升级必须通过真实 SDK 信封回归。无真实外发的内存接收端检查最终字节、停用后队列失效与断网不影响本机取证。新增依赖仅 `sentry-sdk`，复用已声明的 urllib3 / certifi；体积以发行构建为准。未采用自写 Sentry 协议或 Workers 收集后台，避免另行维护传输、去重和查看界面。没有真实 ledger 写入。
+可选远程诊断复用官方 [sentry-sdk 2.72.0](https://github.com/getsentry/sentry-python/tree/2.72.0)（MIT，维护中，支持 Python 3.14）；固定版源码通过 `opensrc path pypi:sentry-sdk` 核对。SDK 负责后台 HTTP、TLS、Sentry 信封和服务端限流；Peach 负责本机选择、技术字段投影、同类错误聚合与每机每日上限。版本统计与错误诊断共用默认勾选的开关，关闭时不构造 SDK；SDK 全局自动集成、追踪、回放、日志、会话与指标采集均关闭；版本统计与计数日志、会话汇总由 Peach 用 SDK 的 `Envelope`、`Item` 与 `PayloadRef` 组装，经同一传输发送（ADR-0132）。`HttpTransport._send_envelope` 的窄覆盖在真正发送前复查本机选择版本并移除本机传输元数据；它是固定版本的内部接口，升级必须通过真实 SDK 信封回归。无真实外发的内存接收端检查最终字节、停用后队列失效与断网不影响本机取证。新增依赖仅 `sentry-sdk`，复用已声明的 urllib3 / certifi；体积以发行构建为准。未采用自写 Sentry 协议或 Workers 收集后台，避免另行维护传输、去重和查看界面。没有真实 ledger 写入。
 
-故障频率复用已固定的 `filelock`、`fsutil.atomic_write_text` 和 SDK 事件标签，保留 Peach 的同意版本、技术投影、跨进程计数与每日批次策略。`diagnostic_frequency` 保存有界技术样本及待提交增量，首次、每小时和正常退出通过同一 SDK 提交；关闭会清除聚合。Sentry 默认事件数统计批次，不会将自定义次数标签自动求和；汇总按事件的 `occurrence_day` 与 `occurrence_count` 计算。`reporting_transport` 复用官方 `HttpTransport` 的 `_handle_response`、`_handle_request_error` 与队列丢弃回调，取得 HTTP 状态且不重复实现请求、TLS 或重试；固定内部接口以真实 SDK 和模拟 HTTP 回归。`reporting_delivery` 只保存本机有限回执；SDK 入队、HTTP 接收与接收端留存分别解释。用途、环境与公开构建号复用 Sentry 原生字段，测试在同一传输边界拦截外发。未开启 SDK metrics 或新增收集服务：独立指标通道会增加同意边界、额度与交付口径。计数只覆盖已筛选技术故障，发送及保留限制见 [诊断核验](DIAGNOSTICS.md)。没有新增 Python 依赖或真实 ledger 写入。
+故障频率复用已固定的 `filelock`、`fsutil.atomic_write_text` 和 SDK 事件标签，保留 Peach 的同意版本、技术投影、跨进程计数与每日批次策略。`diagnostic_frequency` 保存有界技术样本及待提交增量；每个诊断键只上传一次错误事件，之后的次数每 6 小时、跨日或正常退出时合并成带整数 `occurrence_count` 的计数日志，接收端日志查询可直接求和；关闭会清除聚合。`reporting_transport` 复用官方 `HttpTransport` 的 `_handle_response`、`_handle_request_error` 与队列丢弃回调，取得 HTTP 状态且不重复实现请求、TLS 或重试；固定内部接口以真实 SDK 和模拟 HTTP 回归。`reporting_delivery` 只保存本机有限回执；SDK 入队、HTTP 接收与接收端留存分别解释。用途、环境与公开构建号复用 Sentry 原生字段，测试在同一传输边界拦截外发。未开启 SDK metrics 或新增收集服务；计数改走日志而不是指标，是因为日志条目能带上与错误事件相同的诊断键和白名单标签。计数只覆盖已筛选技术故障，发送及保留限制见 [诊断核验](DIAGNOSTICS.md)。没有新增 Python 依赖或真实 ledger 写入。
 
 Windows 连接清理复用 [CPython 3.14.7 的 Proactor 对象协议](https://github.com/python/cpython/blob/v3.14.7/Lib/asyncio/proactor_events.py)（PSF 许可，无新增依赖）。精确识别纯标准库清理回调中的 `WinError 10054`，只补完 socket 关闭、服务端解除登记和关闭状态，不重复通知协议，不全局修改标准库类或替换事件循环。它使用 `_sock`、`_server._detach` 与 `_called_connection_lost` 私有接口，升级 Python 时须核验。真实 socket 和 `asyncio.Server` 配合合成故障验证资源释放；收尾自身失败保留原始异常链并上报。33 次回环实验未复现原始竞争时序，不据此认定客户端来源。协议类别只写本机日志；来源、任务、媒体和浏览器的远程筛选复用现有领域状态，见 [诊断核验](DIAGNOSTICS.md#远程错误筛选核验)。
 
@@ -639,7 +661,7 @@ MGS 专属发行先查自营商品目录，Prestige 番号复用 `metadata_route
 
 传统正封完整居中，比例留白复用同图派生档的模糊补底，新作与视频流卡片使用同一份取景规则。整幅大封使用卡片纯色底，竖版按主脸填满，横版完整放入容器；图片切换时清理残留背景属性。
 
-取景由 `poster-crop-v13` 管理。Blu-ray 来源标题、明确的版次标签与图片比例共同决定 0.85 正封比例，标题随正封框保留，重算人脸与正封框均读取同一版次；有效宽正封框在没有版次标题的卡片上也完整显示。VR 标记、IENEE、IENFE、SDHS 数字发行拼图，以及可信主脸跨过 DVD 正封先验边界的大封保留整幅画面，由 `cover_frame.layout=still` 传给卡片。两条满高接缝夹出居中正封且两侧纹理均低于正封四分之一时，只显示中间正封。大封在竖版大图按主脸居中填满，横版小图完整显示，均不使用模糊补边；JPEG 软边的书脊识别结合突出度、左忙右静的方向与正封侧基线。手工框保持用户取景。重试队列按最早尝试时间轮转，收起的合集沿用设置跳过；逐番号结果保存在 `feed-cover-attempts/`。资料已齐、只缺封面的新作另派 `feed-cover`（补新作封面）批次，只取图、不写账本，走独立后继通道；排在队里或正在跑的番号不再进下一批。复用现有 HTTP、Pillow、OpenCV 与文件锁，无新增依赖。
+取景由 `poster-crop-v13` 管理。Blu-ray 来源标题、明确的版次标签与图片比例共同决定 0.85 正封比例，标题随正封框保留，重算人脸与正封框均读取同一版次；有效宽正封框在没有版次标题的卡片上也完整显示。VR 标记、IENEE、IENFE、SDHS 数字发行拼图，以及可信主脸跨过 DVD 正封先验边界的大封保留整幅画面，由 `cover_frame.layout=still` 传给卡片。两条满高接缝夹出居中正封且两侧纹理均低于正封四分之一时，只显示中间正封。大封在竖版大图按主脸居中填满，横版小图完整显示，均不使用模糊补边；JPEG 软边的书脊识别结合突出度、左忙右静的方向与正封侧基线。手工框保持用户取景。重试队列按最早尝试时间轮转，收起的合集沿用设置跳过；逐番号结果保存在 `feed-cover-attempts/`。资料已齐、只缺封面的新作另派 `feed-cover`（新作封面采集）批次，只取图、不写账本，走独立后继通道；排在队里或正在跑的番号不再进下一批。复用现有 HTTP、Pillow、OpenCV 与文件锁，无新增依赖。
 
 馆藏与新作取图共用 `cover_artwork.metadata_snapshots` 和 `best_cover`，片商官网、发行方、R18 与 DMM 的官方候选均参与尺寸比较。馆藏采集将长边 1600px 作为高清重探界限，社区转存图可由官方封面替换；同类官方图按像素面积升级，FC2 保留商品图的来源保护。`scripts/audit_cover_artwork.py` 逐张核对尺寸、来源、版次与取景框，输出 CSV；`scripts/upgrade_audited_covers.py` 按已有官方快照逐番号重探，`--live` 经同一官方链在线补查，保存原件备份与结果检查点。两者只处理可重建图片和边车，不写 ledger。
 
@@ -924,7 +946,7 @@ A 盘垃圾隔离使用短名称 `peach-purge-<32 位 UUID>.peach-quarantine`，
 | 外挂字幕 sidecar | 浏览器原生 `TextTrack` 与 [WebVTT 规范](https://www.w3.org/TR/webvtt1/)；配对复用 `catalog_rules` 的 `VERSION_TAIL_TOKENS` 与 `release_code_from_filename`。行为证据：sakuramediabe `import_service.py`／`movie_numbers.py` 的 `subtitle_matches_movie_number`（同目录、纯番号、不回退同名），NeoAVDC `organizeMedia.ts`／`parseNumber.ts` 的 `isSubtitleFile`（`.srt .ass .sub .vtt .ssa`，按视频主名前缀）；Peach 的判据是两者的并集加顺序 | `subtitles.py` 只做同目录配对（exact／suffix／code／orphan）、`asset_subtitle` 幂等登记、srt/ass/ssa → WebVTT。不用 `pysubs2`（为几十行加运行时依赖）和 FFmpeg（每次起子进程、报不出「编码认不出来」），编码要认 GBK／Big5／Shift_JIS，不用几乎吞下任何字节的 `gb18030`。内封字幕轨不在此列，`media_probe.py` 只取 `v:0`，流信息不落库 |
 | 播放偏好与字幕记忆 | 原生 `TextTrack.id`；现有 `filelock==4.2.0` 与 `fsutil.atomic_write_text`，沿用本机状态文件的并发锁与原子替换 | `playerMemory` 与 `SubtitleSession` 供详情、小窗与沉浸播放复用；服务端 `state/player-subtitles/` 按资产、关注条目及帖子内视频分别保留 WebVTT，`subtitles.json` 同存旋转、倍速、字幕外观、轨道身份与最后选择，`null` 表示关闭。偏好以字段补丁在同一文件锁内合并，客户端同身份写入串行，用户操作不受迟到的读取覆盖。旁挂字幕按目录内文件名生成稳定身份，登记与载入顺序不参与身份；已保存的登记 ID 通过轨道别名恢复。同目录发现复用现有配对、转码与读取上限，只读授权目录并与已登记路径去重。内容保存先于成功回执，重复导入按轨道键覆盖；重新播放直接读保存内容。保留转换器与 SubtitleCat 接口，不新增解析器、浏览器数据库依赖或 ledger 迁移 |
 | 分卷文件命名 | [Plex 官方命名](https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/)的 `cd/disc/disk/dvd/part/pt + 数字` 与 [Kodi 官方 File Stacking](https://kodi.wiki/view/File_stacking)只作行为证据；运行时复用当前树的 `part_marker`，不新增扫描器依赖 | 兼容裸数字、紧接番号的 A–H 与 cd 序号、fhd 序号及圈号标题，共有版次尾缀先剥离再取卷标。FC2 的明确数字合集允许缺集和零起始；本篇与唯一 SP、gift、特典可合卡，完整版与数字分卷混合、重复标签不自动合并。每个 asset 与播放会话保留，不拼接或改写媒体 |
-| 照片灯箱轮播 | Swiper 14.3.0（MIT，本地固定版本，按需加载 CSS／JS）的 Thumbs / Keyboard / Zoom 模块，由 React 灯箱（`frontend/src/react/photo-lightbox/`）只经核心 API 驱动，不用 Swiper 的 React 封装 | 样式与脚本都就绪才构造轮播，保留 scoped 单 slide 结构样式防首载重叠；Swiper 管轮播、键盘、缩放与缩略图，Peach 管图集来源与顺序、缩略图居中、相对原图百分比、适应窗口／原大小、缩略图缓存与计费口径；图片墙是 CSS 网格，不经 Swiper |
+| 照片灯箱轮播 | Swiper 14.4.0（MIT，本地固定版本，按需加载 CSS／JS）的 Thumbs / Keyboard / Zoom 模块，由 React 灯箱（`frontend/src/react/photo-lightbox/`）只经核心 API 驱动，不用 Swiper 的 React 封装 | 样式与脚本都就绪才构造轮播，保留 scoped 单 slide 结构样式防首载重叠；Swiper 管轮播、键盘、缩放与缩略图，Peach 管图集来源与顺序、缩略图居中、相对原图百分比、适应窗口／原大小、缩略图缓存与计费口径；图片墙是 CSS 网格，不经 Swiper |
 | 浏览器历史 | `react-router` 8.4.0（MIT）的 `createBrowserHistory`（`v5Compat`），由主包里的共享源码提供（`frontend/src/history/`）；不用 `history` 5.3.0（2022 年后不再发版、另带 `@babel/runtime`，条目格式与 React Router 内置的那份并存） | 壳写地址的入口 `shellNavigate`：路径按当前地址解析，清理地址时透传当前条目的状态；一建好就接上唯一的监听位再分发，每次变化领一个导航序号 `seq`，认领写地址保持页面打开序号、无人认领时领新 `openEpoch`；页面元素按页面打开序号挂 key，覆盖元素按 `seq` 挂 key。`useRouteOpen` 在 `pageOpens` 就绪后排进微任务，普通点卡交一次性请求，`initialOverlayOpened` 只允冷启动首次打开；队列由 `QueueRequests` 读 `queueOpens` 接手意图，取齐实际条目后才写地址。背景由条目记下，启动不读，后退前进按条目恢复 |
 | 客户端导航 | `react-router` 8.4.0 的 `<Router>`（Declarative 模式）与 `<Routes>`，`navigator` 是上面那一份历史（`frontend/src/react/router/`）；不用 `unstable_HistoryRouter`：它把更新包进 `startTransition`，接连两次变化并成一次渲染 | 每条路径都有元素，按匹配打开；每次没人认领的历史变化领一个页面打开序号，元素按代次重挂重取或就地推（`managed-routes.tsx`、`router/pages/`） |
 | 导航排序 | 浏览器原生 HTML Drag and Drop，侧栏 `sidebar/sidebar-island.tsx` 与设置面板 `settings-panel/sidebar-order.tsx` 各接一份 | 桌面鼠标直接拖动、落点提示、上下移动按钮作为键盘与触屏回退、`localStorage` 持久化；不为单列排序引入额外运行时依赖 |
@@ -936,7 +958,8 @@ A 盘垃圾隔离使用短名称 `peach-purge-<32 位 UUID>.peach-quarantine`，
 | 生成产物跨机同步 | Syncthing 2.1.x，Windows send-only → Mac receive-only | 目录划分、忽略规则、方向固定与「Mac 不发布正式产物」的边界 |
 | Windows 托盘 | pystray 0.19.5（LGPLv3）、Pillow、Win32 Per-Monitor V2 DPI | Peach 服务归属、后台更新检查、菜单动作、品牌图标 |
 | Windows 托盘恢复 | Windows 自带 `OpenProcess`、`GetProcessTimes`、[`WaitForSingleObject`](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject)、`GetExitCodeProcess`；Python 3.12+ 标准库 `ctypes` / `subprocess`，无新增依赖或分发体积 | `tray_lifecycle` 保留明确退出意图、创建时间校验、3 次 / 5 分钟预算与重启交接。pystray 0.19.5 的 `_message_handlers` 接收 `WM_STOP` / `WM_ENDSESSION`，已核对安装包源码；Windows 临时进程实验证明强制退出能恢复，明确退出不会恢复。原生 API 随受支持的 Windows 维护；pystray 使用项目固定版本。不采用 Task Scheduler `RestartOnFailure`：它只管理任务启动的实例，桌面快捷方式与现有重启脚本不归其管理；不新增 psutil 运行时依赖，进程句柄已覆盖等待与退出码。已知边界是监视器随整棵进程树被终止时不能恢复。 |
-| macOS 菜单栏 | `pyobjc-framework-Cocoa==12.2.2`（MIT）提供 AppKit / PyObjCTools / objc | 附件应用策略、18 pt template 图、服务归属与菜单动作 |
+| macOS 菜单栏 | `pyobjc-framework-Cocoa==12.2.2`（MIT）提供 AppKit / Foundation / PyObjCTools / objc | 附件应用策略、18 pt template 图、服务归属与菜单动作 |
+| macOS 应用内更新 | [Sparkle 2.10.1](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1)（MIT）官方发布包，地址与 SHA-256 固定在 `scripts/sparkle-macos.json`；框架放 `Contents/Frameworks`，由 pyobjc `objc.loadBundle` 加载；appcast 由官方 `generate_appcast` 生成、`sign_update --verify` 核对 | 读取端的迁移拦截、安装前保存任务进度与停服务、设置页偏好映射到定时检查、appcast 的迁移号与发布门槛（`scripts/sparkle_appcast.py`）。非沙盒应用用不到 XPC 服务，取件时删除并按 ad-hoc 由内向外重签；不开 Hardened Runtime。不自写 DMG 下载、挂载与替换，也不在 Linux 上用 Python 重新实现 EdDSA 签名与 appcast 生成：官方工具只需一个仅标签运行的 macOS 作业。取舍与未验证项见 [ADR-0130](adr/0130-macos-sparkle-in-app-update.md) |
 | macOS 拖放安装镜像 | [dmgbuild 1.6.7](https://github.com/dmgbuild/dmgbuild)（MIT，Python ≥3.10，macOS）直接写 Finder 元数据；仅安装于 `build` extra。纯 Python wheel 约 35 KB，依赖 `ds-store`、`mac-alias`；固定传递版本见 `uv.lock` | 已读取固定版的文件复制、背景多分辨率合成与图标布局实现；背景渲染复用 resvg-py 0.5.0，无运行时新增依赖。Peach 提供 640×420 拖放布局、双分辨率背景和应用内许可证；[APFS 设置](https://dmgbuild.readthedocs.io/en/latest/settings.html#filesystem)保留签名资源的 Unicode 文件名。单元验证配置与图片尺寸，macOS 原生回归与发布验收实际挂载镜像，检查严格签名、资源字节及软链。磁盘镜像创建依赖 macOS 的 hdiutil；无需 Finder 自动化权限，挂载或文件系统失败会终止构建 |
 | 人脸取景 | `opencv-python-headless==5.0.0.93`（Apache-2.0）的 `cv2.FaceDetectorYN` + opencv_zoo 定版模型 `face_detection_yunet_2023mar.onnx`（MIT，opencv_zoo 提交 `48b10fa5`，sha256 `8f2383e4…52fa4`，232 KB，随安装包放 `tools/face-models/`，没带时放 `peach-data/tools/yunet/`，不进 Git）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b` 的主脸聚类只作算法参考 | 头像／封面离线脚本共用 `peach.face_detect`（主脸、归一化焦点与 sidecar）。`detect` 按长边 320/640/1280 各检一次、分数取中位数；`main_face` 先筛掉分数落后最好那张 0.1 以上的框，再取最大。不用 Haar 级联（OpenCV 5 wheel 里没有、检出率低）与 Pigo v1.4.6（有无脸误报）。[实测](SOURCING.md#人脸与水印实测) |
 | 人脸比对 | 同一 OpenCV 的 `cv2.FaceRecognizerSF` + opencv_zoo 定版模型 `face_recognition_sface_2021dec.onnx`（Apache-2.0，同一提交，sha256 `0ba9fbfa…34e79`，与 LFS 指针的 oid 一致，37 MB，随安装包放 `tools/face-models/`，没带时放 `peach-data/tools/sface/`，不进 Git） | `peach.face_match` 提特征、算余弦，阈值用 SFace 官方的 0.363；补头像后继拿图库候选与单人封面截到的脸比（ADR-0056），小脸先放大再检（ADR-0070）。检脸用 `peach.face_detect`，取模型先认随包那份（`bundled_model`，校验 SHA-256，进程内按文件大小与修改时间缓存结论），再走同一条 `fetch_model`；随包文件由 `scripts/fetch_face_models.py` 取齐并附两个目录的 LICENSE，Docker 镜像用 `ADD --checksum` 取同一组文件。不引 `face_recognition`／dlib（要编译、体积大）与 InsightFace（模型限非商用、需 onnxruntime）。[实测](SOURCING.md#人脸与水印实测) |
@@ -1060,7 +1083,7 @@ Python 复用 MIT 许可的 [Ruff](https://docs.astral.sh/ruff/) 0.17.0，版本
 
 `frontend/src/copy-editor-core.js` 是应用、官网与演示站的原位编辑核心，以 classic script 注册 `PeachCopyEditorCore`。核心负责文字命中、原位输入、回车和失焦保存、Esc 取消、连续草稿和 JSON 结果解析；`create` 的 `resolve`／`prepare`／`save`／`onSaved` 保留各端来源定位与保存入口。适配器可用 `element` 与 `nodes` 指定连续行内文字的共同编辑区域，`replaceTextParts` 将纯文字修改映射到原有节点，保留未改动片段的样式，并清理无内容且仅带样式属性的行内元素。空字符串可作为删除结果，无法确认的保存响应保留核对提示。切换控件正常响应点击，Alt 点击进入文字编辑。官网与演示站按应用提交与 SHA256 同步核心，适配器先取得原始文字索引再运行页面脚本。
 
-核心的 `createTools()` 提供工具栏、编辑样式、状态、暂停／继续、导出／退出动作、恢复按钮与来源选择；工具栏和悬停范围跟随模态弹层，避让页面底部选择操作条，`destroy()` 清理节点、监听与未完成选择。应用适配器 `scripts/dev/copy-editor.js` 负责源码候选、草稿、自动生效状态与动作回调。源码模式按顺序加载 `/dev/copy-editor-core.js` 与 `/dev/copy-editor.js`，动态文案保留模板占位符。
+核心的 `createTools()` 提供工具栏、编辑样式、状态、暂停／继续、导出／退出动作、恢复按钮与来源选择。工具条通过原生 Popover 顶层按整个视口定位；打开模态框时保留可交互资格，不受弹窗裁切，也不向设置内容追加占位。`attachToolbarDrag()` 处理非按钮区域的指针拖动、方向键微调与双击或 Esc 复位，位置限制在可见视口内。工具条避让页面底部选择操作条和弹窗底栏，`destroy()` 清理节点、监听与未完成选择。应用适配器 `scripts/dev/copy-editor.js` 负责源码候选、草稿、自动生效状态与动作回调。源码模式按顺序加载 `/dev/copy-editor-core.js` 与 `/dev/copy-editor.js`，动态文案保留模板占位符。
 改字浮条使用多选操作条的 `data-selection-dock`、`data-glass-pane` 与 `data-batch-scope` 样式，几何、玻璃、字体和按钮共享；窄屏状态提示独占一行。
 应用的 React 与动态页面使用源码定位、摘要校验和备份入口；演示站使用浏览器草稿。两者只在 `?edit` 启用，无新增依赖。
 Python 源文件纳入 `src/peach/library_sharing.py` 与 `src/peach/library_processing.py`。动态句子复用标准库 `ast`、`string.Formatter` 定位 f-string 与相邻字符串，编辑时显示命名占位符，保存时校验占位符齐全且各出现一次。求值表达式与格式保留在 AST 中，当前数量只用于显示；其他 Python 文件不属于改字范围。
@@ -1070,6 +1093,10 @@ Python 源文件纳入 `src/peach/library_sharing.py` 与 `src/peach/library_pro
 链接检查结果的身份引用复用 `web_catalog.entity_ref`，页面头像沿用 `entityFaceImg` 的取景和回退，地址前的 favicon 复用 `SiteMark` 与 `/link-mark`；两张结果表共用列定义，Peach 资料名称使用 `entityPath` 生成内部链接。明确的 HTTP 状态码使用 BoardUI Chip，解释与长错误使用可展开的普通正文；永久删除入口位于失效清单自己的页脚，说明与分隔线使用中性色。关注列表无来源时使用 `EmptyState` 的 page 外壳，背景、边框与添加入口同属空状态。断链按钮使用现有 Lucide unlink 字形，仅四条短线循环改变透明度，周期沿用 Loading Dots 的 1.2 秒，reduced motion 沿用全局规则。
 
 ## 馆藏处理控制与耗时预估
+
+任务中心的本机控制复用 `task_run` 的运行身份、`job_recovery` 的请求和检查点、`filelock` 与原子 JSON。`task_control` 保存逐轮控制意图；`BackgroundJob`、后继和命令行执行段共用安全停点。父任务的意图沿父子关联传递，排队任务领取前核对暂停与取消。媒体子进程使用固定版本 psutil 7.2.2（BSD-3-Clause）的暂停、继续、进程身份检查和所属子进程枚举，Windows 沿用已有 kill-on-close Job Object，macOS/Linux 使用专属会话的进程组；平台语义见 [psutil API](https://psutil.readthedocs.io/stable/) 和 [Python 子进程说明](https://docs.python.org/3.14/library/subprocess.html)。psutil 从开发依赖调整为运行依赖，没有新增调度器。网络和文件提交在安全停点响应，任务只有在在途工作退出后才结算取消。
+
+逐轮资源读数复用 psutil 的 native thread ID、线程 CPU 时间和已登记子进程身份，按本机总 CPU 容量归一化；父子汇总按计数器身份去重。Windows GPU 使用标准库 ctypes 调用 [PDH GPU 引擎计数器](https://learn.microsoft.com/en-us/windows/win32/perfctrs/performance-counters-portal)，按物理引擎汇总所属子进程并显示最忙引擎；不把共享服务的 GPU 占用分配给单一任务。网络复用现有 HTTPX 下载字节计量，以相邻采样差分取得下载速度，挂载和无法归属的传输明确未取得。资源归属沿任务控制上下文登记，以原子 JSON 支持命令行任务；读取校验服务 PID 与创建时间，历史任务不保留过期实时数值。界面复用 BoardUI `Chip` 的蓝、紫、青与红色状态 token，取消确认复用现有 `confirmModal`。未新增依赖。
 
 长时任务续跑复用 `job_recovery` 的本机原子记录、`BackgroundJob.checkpoint` 与 `TaskRunHandle.checkpoint`。主任务保留原 `job_id`、`run_id`、开始时间、处理范围和领域检查点；后继重排保留原进度。扫描复用现有 `os.scandir`、SQLite 批次提交、`filelock` 和 `fsutil.atomic_write_text`，保存遍历栈、文件名游标及字幕配对资料。本地资料按影片保存小份证据边车，候选成功落盘后才提交元数据完成集合；整理逐项原子保存同一批次的日志。`scrape_codes.py` 复用流式 CSV 与原始来源快照，续跑只保留已确认完成的番号，未完成番号可以重放。
 

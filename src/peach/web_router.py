@@ -22,6 +22,7 @@ from .web_activity import (
     w_watch_later,
 )
 from .web_batch import q_ads, q_duplicates, w_batch, w_empty_trash
+from .web_performer_delete import q_performer_delete_candidates, q_performer_delete_plan, w_performer_delete
 from .web_tags import q_tag_management, w_tag_management, w_tag_preview
 from .taste_history import history_source_count
 from .web_catalog import (
@@ -52,7 +53,7 @@ from .web_entity import (
 from .web_downloads import (q_downloads, w_download_cancel, w_download_postprocess,
                             w_download_submit)
 from .web_resource_search import q_resource_search
-from .web_jav_detail import q_jav_detail, q_jav_resources, q_jav_reviews
+from .web_jav_detail import q_jav_detail, q_jav_resources, q_jav_reviews, w_jav_cover
 from .web_jav_discovery import q_jav_discoveries
 from .web_feeds import (
     q_feed_check,
@@ -102,6 +103,7 @@ from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resourc
 from .web_review import q_review, w_review_decision, w_review_genre
 from .web_settings import q_settings, w_settings
 from .web_library_shortcuts import q_library_shortcuts, w_library_shortcuts
+from .web_tutorial import q_tutorial_progress, w_tutorial_progress
 from .web_folders import q_folders, w_folder_preview, w_folder_rule
 from .web_scraping import (
     q_scraping, q_scraping_amane_bridge, w_scraping_amane_check, w_scraping_amane_rebuild,
@@ -362,6 +364,7 @@ GET_HANDLERS = {
     "/api/scraping/amane-bridge": q_scraping_amane_bridge,
     "/api/settings": q_settings,
     "/api/library-shortcuts": q_library_shortcuts,
+    "/api/tutorial-progress": q_tutorial_progress,
     "/api/feeds": q_feeds,
     "/api/feeds/check": q_feed_check,
     "/api/feeds/discoveries": q_feed_discoveries,
@@ -387,6 +390,8 @@ GET_HANDLERS = {
     "/api/parts": q_parts,
     "/api/editions": q_editions,
     "/api/entity": q_entity,
+    "/api/performer/delete-plan": q_performer_delete_plan,
+    "/api/performer/delete-candidates": q_performer_delete_candidates,
     "/api/entity/shapes": _get_entity_shapes,
     "/api/links": w_links,
     "/api/photos": q_entity_photos,
@@ -424,6 +429,7 @@ POST_HANDLERS = {
     "/api/thumbnail-jobs": w_thumbnail_jobs,
     "/api/scraping/settings": w_scraping_settings,
     "/api/scraping/cover": w_scraping_cover,
+    "/api/jav/cover": w_jav_cover,
     "/api/scraping/check": w_scraping_check,
     "/api/scraping/amane-bridge/check": w_scraping_amane_check,
     "/api/scraping/amane-bridge/rebuild": w_scraping_amane_rebuild,
@@ -475,7 +481,9 @@ POST_HANDLERS = {
     "/api/review/genre": w_review_genre,
     "/api/settings": w_settings,
     "/api/library-shortcuts": w_library_shortcuts,
+    "/api/tutorial-progress": w_tutorial_progress,
     "/api/entity-name": w_entity_name,
+    "/api/performer/delete": w_performer_delete,
     "/api/entity-alias": w_entity_alias,
     "/api/face-models": _post_face_models,
 }

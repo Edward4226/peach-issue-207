@@ -650,9 +650,12 @@ def uninstall(request: Request, body: dict = Body(...), _args=Depends(require_au
     if body.get("confirmation") != "卸载 Peach":
         raise HTTPException(400, "请确认卸载 Peach")
     from .jobs import BackgroundJob
-    if any(isinstance(job, BackgroundJob) and (job.snapshot() or {}).get("status") == "running"
-           for job in vars(request.app.state.web_contract).values()):
-        raise HTTPException(409, "后台任务正在运行，请完成后卸载")
+    from .task_runs import task_label
+    # 写出是哪几个：开机后自动跑的关注、订阅检查不在用户印象里，只说「后台任务」没处可找。
+    running = dict.fromkeys(task_label(job.task_key) for job in vars(request.app.state.web_contract).values()
+                            if isinstance(job, BackgroundJob) and (job.snapshot() or {}).get("status") == "running")
+    if running:
+        raise HTTPException(409, f"{'、'.join(running)}正在运行，请在任务中心等它完成或取消后再卸载")
     try:
         return desktop_uninstall.request(settings_file.load_config(), body.get("delete_data"))
     except (ValueError, Timeout) as exc:

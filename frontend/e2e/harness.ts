@@ -112,6 +112,7 @@ export async function withPageDiagnostics<T>(page: Page, where: string | (() => 
         expanded: node.getAttribute('aria-expanded'), text: node.textContent?.slice(0, 600),
       })),
       busy: [...document.querySelectorAll('[aria-busy="true"],[data-skeleton]')]
+        .filter(node => !node.closest('[data-content-skeleton][aria-hidden="true"]'))
         .slice(0, 12).map(node => ({ tag: node.tagName, id: node.id, label: node.getAttribute('aria-label') })),
     })).catch(() => '未取得');
     const tree = await page.locator('body').ariaSnapshot({ timeout: 2000 }).catch(() => '未取得');
@@ -135,7 +136,8 @@ export async function settle(page: Page, scope = 'body', { except = '' }: { exce
     await page.waitForFunction(
       ({ selector, except }) => {
         const root = document.querySelector(selector);
-        const waiting = (node: Element) => node.matches('[aria-busy="true"],[data-skeleton]') && !(except && node.matches(except));
+        const waiting = (node: Element) => node.matches('[aria-busy="true"],[data-skeleton]')
+          && !node.closest('[data-content-skeleton][aria-hidden="true"]') && !(except && node.matches(except));
         return !!root && !waiting(root) && ![...root.querySelectorAll('[aria-busy="true"],[data-skeleton]')].some(waiting);
       },
       { selector: scope, except }, { timeout: 15_000 });
@@ -148,9 +150,10 @@ export async function settle(page: Page, scope = 'body', { except = '' }: { exce
     const pending = await page.evaluate(({ selector, except }) => {
       const root = document.querySelector(selector);
       if (!root) return { missing_scope: selector };
-      const nodes = [...root.querySelectorAll('[aria-busy="true"],[data-skeleton]')]
-        .filter(node => !(except && node.matches(except)));
-      if (root.matches('[aria-busy="true"],[data-skeleton]')) nodes.unshift(root);
+      const waiting = (node: Element) => node.matches('[aria-busy="true"],[data-skeleton]')
+        && !node.closest('[data-content-skeleton][aria-hidden="true"]') && !(except && node.matches(except));
+      const nodes = [...root.querySelectorAll('[aria-busy="true"],[data-skeleton]')].filter(waiting);
+      if (waiting(root)) nodes.unshift(root);
       return nodes.slice(0, 12).map(node => {
         const box = node.getBoundingClientRect();
         return { tag: node.tagName, id: node.id, skeleton: node.getAttribute('data-skeleton'),
@@ -216,15 +219,22 @@ export async function visit(browser: Browser, path: string, viewport: Viewport,
       problems.push(`failed ${request.url().slice(origin.length)} ${reason}`);
     }
   });
+  /* 桩回调里的 `route.fetch`、`route.continue` 可能在关上下文时还没返回，之后会以
+   * 「Request context disposed」失败；没人等它，就成了整个文件的 unhandledRejection。
+   * `ignoreErrors` 先撤掉全部桩，让还在路上的那几趟失败时静默返回。 */
+  const close = async () => {
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await context.close();
+  };
   // 只打开到 load：等哪块主体、何时 settle 由用例决定，见 `settle` 的说明。
   try {
     await prepare?.(page);
     await page.goto(origin + path, { waitUntil: 'load' });
   } catch (error) {
-    await context.close();
+    await close();
     throw error;
   }
-  return { page, problems, close: () => context.close() };
+  return { page, problems, close };
 }
 
 /* 越界名单只报根因：页面一旦被撑宽，移动视口跟着变宽，`fixed` 的顶栏、Toast 会一起

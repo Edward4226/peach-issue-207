@@ -42,12 +42,12 @@ export function StartupSettings({ startup, receipt }: { startup: StartupState; r
   };
 
   return (
-    <Section title="开机自启" onSubmit={submit}>
+    <Section guide="startup" title="开机自启" onSubmit={submit}>
       <Rows>
         <SettingsRow label="开机后启动 Peach">
           <Switch aria-label="开机后启动 Peach" isSelected={enabled} isDisabled={!startup.available} onChange={setEnabled} />
         </SettingsRow>
-        <SettingsRow label="只启动托盘，不打开网页">
+        <SettingsRow label="只启动托盘，不打开网页" description="开机后在后台运行，需要时从托盘打开页面。">
           <Switch aria-label="只启动托盘，不打开网页" isSelected={silent} isDisabled={!startup.available || !enabled} onChange={setSilent} />
         </SettingsRow>
         <SettingsRow label="在桌面创建快捷方式" description={startup.desktop_message || undefined}>

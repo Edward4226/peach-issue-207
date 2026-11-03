@@ -118,7 +118,9 @@ def cached_people(contract, preview, value: str, performers=()) -> dict:
                 if key and key not in people:
                     found = entities.resolve_entity(connection, 'performer', name)
                     people[key] = {'id': found['id'] if found else None, 'name': name}
-            for name in page_names:
+            # 详情页的出演者名只给账本与发现资料都没有人物的作品兜底：素人作品入库后账本记的是资料站认出的
+            # 真名，页面仍写店铺艺名，两者对不上时不能把艺名算成第二个人。
+            for name in page_names if not people else ():
                 person = _page_person(connection, name)
                 key = entities.normalize_entity_name(person['name'])
                 if key and key not in people and person['id'] not in excluded:

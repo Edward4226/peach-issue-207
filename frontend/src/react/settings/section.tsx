@@ -14,6 +14,8 @@ import { cx } from '@/utils/cx';
 
 interface SectionProps {
   title: string;
+  /** 导览跟随组件身份，不依赖可编辑的标题文案。 */
+  guide?: string;
   icon?: ReactNode;
   id?: string;
   /** 跟着标题走的次要内容（来源站点的外链）。标题占剩下的宽度，它靠右。 */
@@ -25,7 +27,7 @@ interface SectionProps {
 
 /* 分区里的说明、报错与读数常带长 URL、堆栈和无空格路径：整个分区按 `overflow-wrap:anywhere`
    就地折断（属性会继承，行内说明、Help 与读数都跟着走），不把卡片撑出横向滚动。 */
-export function Section({ title, icon, id, aside, onSubmit, children }: SectionProps) {
+export function Section({ title, guide, icon, id, aside, onSubmit, children }: SectionProps) {
   const label = icon ? <span className="inline-flex items-center gap-1.5">{icon}{title}</span> : title;
   const body = (
     <>
@@ -40,8 +42,8 @@ export function Section({ title, icon, id, aside, onSubmit, children }: SectionP
     </>
   );
   return onSubmit
-    ? <form id={id} aria-label={title} noValidate onSubmit={onSubmit} className="flex w-full flex-col gap-2 wrap-anywhere">{body}</form>
-    : <section id={id} aria-label={title} className="flex w-full flex-col gap-2 wrap-anywhere">{body}</section>;
+    ? <form id={id} data-guide-target={guide} aria-label={title} noValidate onSubmit={onSubmit} className="flex w-full flex-col gap-2 wrap-anywhere">{body}</form>
+    : <section id={id} data-guide-target={guide} aria-label={title} className="flex w-full flex-col gap-2 wrap-anywhere">{body}</section>;
 }
 
 /** 设置行组：内部由行画线，相邻行组由共享样式补齐边界。 */
@@ -50,11 +52,13 @@ export function Rows({ children }: { children: ReactNode }) {
 }
 
 /** 卡片只管左内边距和底色；不是 `SettingsRow` 的内容由这一层给行距和上下右内边距。
- *  排在 `Rows` 或 `FactList` 后面时 `divided`，和上面那组行之间补一道分隔线。 */
+ *  排在 `Rows` 或 `FactList` 后面时 `divided`，和上面那组行之间补一道分隔线。
+ *  嵌在里面的 `FactList` 退回这层的右内边距：行间线和别处的设置行一样右端顶到卡边，
+ *  读数仍由每行自己的右内边距对齐。 */
 export function Stack({ divided = false, children }: { divided?: boolean; children: ReactNode }) {
   return divided
-    ? <div className="flex flex-col gap-4 border-t border-separator-border py-4 pr-3 empty:hidden">{children}</div>
-    : <div className="flex flex-col gap-4 py-4 pr-3 empty:hidden">{children}</div>;
+    ? <div className="flex flex-col gap-4 border-t border-separator-border py-4 pr-3 empty:hidden [&>.ui-settings-facts]:-mr-3">{children}</div>
+    : <div className="flex flex-col gap-4 py-4 pr-3 empty:hidden [&>.ui-settings-facts]:-mr-3">{children}</div>;
 }
 
 /** 分区首次取数：画 `configuration-skeleton.ts` 里这个分区的那一份骨架，与整页骨架里这一块是同一段

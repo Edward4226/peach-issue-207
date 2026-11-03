@@ -1047,6 +1047,30 @@ class Rule34VideoConnectorTests(unittest.TestCase):
         self.assertTrue(first.thumb_url.endswith("/preview.jpg"))
         self.assertIn("4542721_360.mp4", first.media_url)
 
+    def test_characters_follow_the_site_group_not_the_name_shape(self):
+        """角色按站方的 Characters 分组记 character，名字带括号不算依据。
+
+        `d.mon (overwatch)` 这类标签站方列在 Tags 组里，照记 general。
+        """
+        groups = (
+            b'<div class="vp-group vp-group--characters">'
+            b'<div class="label vp-group__title">Characters</div>'
+            b'<a class="tag_item" href="https://rule34video.com/tags/harry-potter-harry-potter/">'
+            b'harry potter (harry potter)</a></div>'
+            b'<div class="wrap vp-group"><div class="label vp-group__title">Tags</div>'
+            b'<a class="tag_item" href="https://rule34video.com/tags/d-mon-overwatch/">'
+            b'd.mon (overwatch)</a>'
+            b'<a href="#" class="js-open-suggest tag_item tag_item_suggest">+ Suggest</a></div>')
+        detail = RULE34VIDEO_DETAIL_HTML.replace(b"</body>", groups + b"</body>")
+
+        extra = Rule34VideoConnector._detail(detail)["extra"]
+        self.assertEqual(extra["tags"], ["deep throat", "breast squeeze",
+                                         "harry potter (harry potter)",
+                                         "d.mon (overwatch)"])
+        self.assertEqual(extra["tag_types"]["harry potter (harry potter)"], "character")
+        self.assertEqual(extra["tag_types"]["d.mon (overwatch)"], "general")
+        self.assertEqual(extra["tag_types"]["deep throat"], "general")
+
     def _detail_with_credits(self, names, *, ready=None):
         credits = "".join(
             f'<a class="item btn_link video_meta_pill"'

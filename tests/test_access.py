@@ -57,6 +57,28 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
                     response = await client.post('/private', headers={'Origin': origin, 'Sec-Fetch-Site': 'cross-site'})
                     self.assertEqual(response.status_code, 403)
 
+    async def test_browser_asserted_same_origin_wins_over_a_rewritten_host_and_leaves_evidence(self):
+        """本机软件改写 Host、浏览器发 `Origin: null` 时以 Sec-Fetch-Site 为准；对不上的形态写本机取证。"""
+        access.save(self.path, '')
+        with patch.object(routes_auth, '_MISMATCH_SEEN', {}), patch('peach.error_reporting.local_event') as event:
+            for origin in ('http://127.0.0.1:8900', 'null'):
+                response = await self.client.post('/private', headers={
+                    'Origin': origin, 'Sec-Fetch-Site': 'same-origin', 'User-Agent': 'UnitBrowser/1'})
+                self.assertEqual(response.status_code, 200, origin)
+            for refused in ({'Origin': 'https://evil.example', 'Sec-Fetch-Site': 'same-site'},
+                            {'Sec-Fetch-Site': 'cross-site'}):
+                self.assertEqual((await self.client.post('/private', headers=refused)).status_code, 403)
+            self.assertEqual((await self.client.post('/private', headers={'Origin': 'http://localhost'})).status_code, 200)
+        rows = [call.kwargs for call in event.call_args_list]
+        self.assertEqual([(row['accepted'], row['origin_class']) for row in rows],
+                         [(True, 'url'), (True, 'null'), (False, 'url'), (False, 'absent')])
+        rewritten = rows[0]
+        self.assertEqual(rewritten['origin'], {'scheme': 'http', 'host_kind': 'loopback', 'port': 8900})
+        self.assertEqual(rewritten['server'], {'scheme': 'http', 'host_kind': 'hostname', 'port': None})
+        self.assertEqual((rewritten['scheme_match'], rewritten['host_match'], rewritten['port_match']), (True, False, False))
+        self.assertEqual((rewritten['fetch_site'], rewritten['user_agent']), ('same-origin', 'UnitBrowser/1'))
+        self.assertNotIn('evil.example', repr(rows), '只记主机类别，不记 Origin 原文')
+
     async def test_password_sessions_expire_on_server_and_survive_independent_app_reads(self):
         access.save(self.path, "correct-password")
         self.assertEqual((await self.client.get("/private")).status_code, 401)

@@ -856,6 +856,21 @@ class SetupJsonContractTests(_SetupHttpCase):
             response = self._send("POST", self.SUBMIT, json=["not", "an", "object"])
             self.assertEqual((response.status_code, response.json()), (400, {"error": "请求正文要是 JSON 对象"}))
 
+    def test_the_submission_trusts_the_browser_asserted_origin_over_the_origin_header(self):
+        """本机代理改写 Host、浏览器发 `Origin: null` 时，以浏览器自己标的 Sec-Fetch-Site 为准。"""
+        refused = (
+            ("标成跨站", {"Origin": "http://test", "Sec-Fetch-Site": "cross-site"}),
+            ("同站不等于同源", {"Origin": "http://elsewhere.example", "Sec-Fetch-Site": "same-site"}),
+        )
+        for name, headers in refused:
+            with self.subTest(name):
+                response = self._send("POST", self.SUBMIT, json=self._body(), headers=headers)
+                self.assertEqual((response.status_code, response.json()), (403, {"error": "请从 Peach 设置页提交"}))
+        self.assertFalse(self.data_root.exists())
+        response = self._send("POST", self.SUBMIT, json=self._body(),
+                              headers={"Origin": "null", "Sec-Fetch-Site": "same-origin"})
+        self.assertEqual(response.status_code, 200, response.text)
+
     def test_a_second_json_submission_refuses_to_overwrite_the_settings_file(self):
         first = self._send("POST", self.SUBMIT, json=self._body(), headers={"Origin": "http://test"})
         self.assertEqual(first.status_code, 200, first.text)
@@ -992,7 +1007,8 @@ class StandaloneConfigurationTests(_Case):
         from peach.automatic_updates import AutomaticUpdates
         path = "/api/configuration/automatic-updates"
         headers = {"X-Token": "test-token"}
-        with self.client() as client:
+        # 自动下载只在有应用内更新的 Windows 独立包上可选；macOS 被拒见 test_automatic_updates。
+        with self.client() as client, mock.patch("peach.distribution.in_app_update", return_value=True):
             client.app.state.automatic_updates = AutomaticUpdates(self.root, available=True)
             self.assertEqual(client.get(path).status_code, 401)
             self.assertEqual(client.post(path, headers=dict(headers, Origin="https://evil.example"),

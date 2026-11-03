@@ -11,7 +11,7 @@ from .processing_control import control_for, initial_estimate, valid_mode, mode_
 ACTIVE = ('running', 'pausing', 'paused', 'stopping')
 
 #: 回给页面的状态字段：`frontend/src/react/library-processing/library-processing.ts` 的
-#: `LibraryProcessingData`，加上对应任务中心那一行的 `run_id`。状态文件里另有续跑用的 `local_metadata`（带完整媒体路径）、
+#: `LibraryProcessingData`，加上对应任务中心那一行的 `run_id` 与发起方式 `trigger`。状态文件里另有续跑用的 `local_metadata`（带完整媒体路径）、
 #: `asset_ids`、`completed_metadata` 等大字段，页面一个都不读；照发的话每页每 10 秒轮询一次
 #: 就是两兆多，还把媒体路径交给了浏览器。续跑与重试读的是 `_current()`，不经过这里。
 PUBLIC_FIELDS = frozenset({
@@ -22,7 +22,7 @@ PUBLIC_FIELDS = frozenset({
     'performer_profile_failed', 'error', 'issue_count', 'paused_count', 'issue_preview',
     'issues_log', 'issues_truncated', 'retryable_asset_ids', 'notes', 'current_asset_id',
     'current_asset_name', 'current_action', 'current_started_at', 'last_progress_at', 'stalled',
-    'waited_seconds', 'completed_at', 'current_source', 'skip_requested', 'archived', 'new_asset_count',
+    'waited_seconds', 'completed_at', 'current_source', 'skip_requested', 'archived', 'new_asset_count', 'trigger',
 })
 
 
@@ -39,12 +39,29 @@ def _current(contract):
     if live and live.get('status') in ACTIVE:
         return live
     stored = snapshot(settings_file.active())
+    from .job_recovery import read
+    recovery = read(contract.db_path, 'library-processing')
+    if recovery.get('status') == 'active' and recovery.get('job_id') == stored.get('job_id'):
+        stored['run_id'] = recovery.get('run_id')
     if live and live.get('job_id') == stored.get('job_id'):
         return {**stored, **live}
     if live and live.get('started_at', 0) > stored.get('started_at', 0):
         # 抢处理锁之前失败时还未写进度文件，不能再用上一轮终态遮住这次错误。
         return live
     return stored
+
+
+def _active_run(contract, state):
+    """进行中这一轮在任务中心的那一行。
+
+    命令行那一轮没有恢复记录，状态里也就没有 `run_id`：按任务键找还在跑的那一行。
+    """
+    if state.get('run_id') is not None:
+        return contract.task_runs.get(state['run_id'])
+    if not getattr(contract.task_runs, 'enabled', True):
+        return None
+    runs = contract.task_runs.query(status='active', task_key='library-processing', limit=1)
+    return runs[0] if runs else None
 
 
 def q_library_processing(contract, _args):
@@ -61,7 +78,18 @@ def q_library_processing(contract, _args):
         from .processing_inventory import preview
         return {'traffic': preview(config, contract.db_path, stage, asset_ids, _args.get('inventory'),
                                    incremental=body.get('incremental', False))}
-    state = decorate(_current(contract))
+    state = _current(contract)
+    run = _active_run(contract, state) if state.get('status') in ACTIVE else None
+    if run is not None:
+        # 忙碌回执要说清这一轮是谁发起的：托盘保存设置后起的扫描在网页上看不出来源。
+        state['trigger'] = run.trigger
+    if run is not None and state.get('run_id') is not None:
+        from .task_control import projection
+        control_state = projection(contract.task_runs, run)
+        if control_state is not None:
+            status = control_state['state']
+            state['status'] = 'stopping' if status == 'cancelling' else status
+    state = decorate(state)
     control = control_for(settings_file.active())
     control.refresh(force=True)
     state['speed_mode'] = control.mode
@@ -99,7 +127,8 @@ def _request_skip(control, previous, body):
     control.skip_current(str(body['job_id']), asset_id)
 
 
-def _archive_notice(contract, config, body):
+def _archive_notice(contract, config, body, archived):
+    """归档与撤销归档只翻这一趟的 `archived`，问题记录和任务历史原样留着。"""
     previous = _current(contract)
     if not body.get('job_id') or body['job_id'] != previous.get('job_id'):
         raise ValueError('任务已变化，请刷新页面后重试')
@@ -109,7 +138,7 @@ def _archive_notice(contract, config, body):
     saved = json.loads(state_path(config).read_text(encoding='utf-8'))
     if saved.get('job_id') != body['job_id']:
         raise ValueError('任务已变化，请刷新页面后重试')
-    _save(state_path(config), {**saved, 'archived':True})
+    _save(state_path(config), {**saved, 'archived':archived})
     return q_library_processing(contract, {})
 
 
@@ -147,8 +176,8 @@ def _set_processing_speed(contract, control, previous, body):
 
 def _control_action(contract, config, body):
     action = body['action']
-    if action == 'archive':
-        return _archive_notice(contract, config, body)
+    if action in ('archive', 'unarchive'):
+        return _archive_notice(contract, config, body, action == 'archive')
     if action not in ('pause', 'resume', 'set_speed', 'skip_current', 'cancel'):
         raise ValueError('处理动作无效')
     previous = _current(contract)
@@ -164,6 +193,9 @@ def _control_action(contract, config, body):
     if job_id:
         control.select_job(str(job_id))
     if action == 'cancel':
+        if previous.get('run_id') is not None:
+            from .task_control import request
+            request(contract.task_runs, previous['run_id'], action)
         return _cancel_processing(contract, config, control, previous, str(job_id))
     if previous.get('status') == 'stopping':
         raise ValueError('正在等待任务停止，请稍后重试')
@@ -172,6 +204,9 @@ def _control_action(contract, config, body):
         return q_library_processing(contract, {})
     if action == 'set_speed':
         return _set_processing_speed(contract, control, previous, body)
+    if previous.get('run_id') is not None:
+        from .task_control import request
+        request(contract.task_runs, previous['run_id'], action)
     status = ('paused' if previous.get('status') == 'paused' else 'pausing') if action == 'pause' else 'running'
     _announce_control(contract.library_processing_job, str(job_id), status)
     control.request(action, str(job_id))

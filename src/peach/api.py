@@ -407,7 +407,7 @@ def create_app(
                                                     edge=COVER_SMALL_THUMB_EDGE,
                                                     quality=COVER_SMALL_THUMB_QUALITY)
     transcode_service = TranscodeService(resolver, settings.transcode_root, state_root=settings.follow_state_root)
-    header_repairs = HeaderRepairStore(settings.transcode_root, resolver)
+    header_repairs = HeaderRepairStore(settings.transcode_root, resolver, runs=contract.task_runs)
     hls_plan_executor = ThreadPoolExecutor(
         max_workers=2, thread_name_prefix="PeachHlsPlan",
     )
@@ -507,10 +507,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        from .error_reporting import asyncio_handler
-        loop = asyncio.get_running_loop()
-        previous_error_handler = loop.get_exception_handler()
-        loop.set_exception_handler(asyncio_handler)
+        # asyncio 异常处理器由 `cli._run_uvicorn` 装在 uvicorn 的事件循环上：它要拿着 uvicorn
+        # 的 Server，才能在监听被标准库关掉后重新监听。
         # 握手要等 cloudflared 连上边缘，断网时会等满 `wait_timeout`；放在后台，本机访问
         # 不等公网入口。连接进度由 `tunnel_manager.snapshot()` 报告。
         tunnel_startup = asyncio.create_task(asyncio.to_thread(_start_tunnel, settings, tunnel_manager))
@@ -535,7 +533,6 @@ def create_app(
             await activation.stop()
             _app.state.ledger_background_ready = False
             aggregate_stop.set()
-            loop.set_exception_handler(previous_error_handler)
             warmup.cancel()
             recovery_service.stop()
             follow_scheduler.stop()
@@ -553,6 +550,7 @@ def create_app(
             # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收
             # 一下，免得在途的那一轮在解释器拆卸期间还继续查库、往没人读的状态里写。
             contract.stop_background_jobs()
+            header_repairs.stop()
             from . import face_models
             face_models.detach(contract.task_runs)
             if mdns is not None:

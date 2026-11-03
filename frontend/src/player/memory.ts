@@ -121,7 +121,9 @@ export interface PlaybackIntent {
 
 export const createPlaybackIntent = (): PlaybackIntent => ({ userActed: false });
 
-function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume: number, disposed: () => boolean): VolumeState {
+function bindVolume(
+  video: HTMLVideoElement, memory: PlayerMemory | null, defaultVolume: number, disposed: () => boolean,
+): VolumeState {
   let touched = false, restoring: number | undefined, programmatic: number | undefined, stopped = false;
   const apply = (value: number) => {
     if (stopped || disposed() || !validVolume(value)) return;
@@ -130,7 +132,7 @@ function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume
     restoring = value; video.volume = value;
   };
   const save = () => {
-    if (stopped || disposed() || !validVolume(video.volume)) return;
+    if (!memory || stopped || disposed() || !validVolume(video.volume)) return;
     void memory.save({ volume: video.volume }).catch(() => {});
   };
   const onVolumeChange = () => {
@@ -154,7 +156,7 @@ function bindVolume(video: HTMLVideoElement, memory: PlayerMemory, defaultVolume
     finishReady = finish;
     /* 本地记忆接口异常时不能让播放器无限等下去；超时后保留默认音量，迟到的记录也不再覆盖。 */
     const timer = setTimeout(() => { timedOut = true; finish() }, 4_000);
-    void memory.load().then(saved => {
+    void (memory?.load() ?? Promise.resolve({ selected: null, tracks: [] } as PlayerMemoryValue)).then(saved => {
       if (!timedOut && !stopped && !disposed()) {
         const changedBeforeLoad = programmatic !== undefined && video.volume !== programmatic;
         if (!touched && !changedBeforeLoad && validVolume(saved.volume)) apply(saved.volume);
@@ -210,6 +212,11 @@ export function mountVolumeMemory(player: VjsPlayer, video: HTMLVideoElement, de
   const state = bindVolume(video, memory, defaultVolume, () => player.isDisposed());
   player.on('dispose', state.dispose);
   return state;
+}
+
+/** 导览预览没有片源，不读也不写这部片子的播放记忆；音量控件仍可独立工作。 */
+export function mountPreviewVolume(video: HTMLVideoElement, defaultVolume = 1) {
+  return bindVolume(video, null, defaultVolume, () => false);
 }
 
 /** 原生 `<video>` 兜底没有 Video.js 实例，也用同一个身份读写音量记录。

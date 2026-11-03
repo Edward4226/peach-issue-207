@@ -17,7 +17,7 @@ import { disposePlayer } from './dispose';
 import { playerHost } from './host';
 import { mountImmersePlayer, type ImmersePlayerOptions } from './immerse-player';
 import {
-  createPlaybackIntent, mountDetachedVolumeMemory, mountVolumeMemory, playWhenVolumeReady,
+  createPlaybackIntent, mountDetachedVolumeMemory, mountPreviewVolume, mountVolumeMemory, playWhenVolumeReady,
 } from './memory';
 import { wirePlayerContextMenu } from './menu';
 import { detailPlayer, setDetailPlayer } from './registry';
@@ -125,7 +125,11 @@ export async function mountDetailPlayer(
   setDetailPlayer(player);
   player.peachItem = item;
   player.peachPlaybackKey = options.playbackKey || playbackKey('item', item);
-  const volume = mountVolumeMemory(player, video, host.settings().defaultVolume / 100);
+  const defaultVolume = host.settings().defaultVolume / 100;
+  const volume = options.guidePreview
+    ? mountPreviewVolume(video, defaultVolume)
+    : mountVolumeMemory(player, video, defaultVolume);
+  if (options.guidePreview) player.on('dispose', volume.dispose);
   wirePlayerContextMenu(player);
   /* 手机上的画面格按视频自己的比例排（`--peach-video-ratio`）。 */
   player.on('loadedmetadata', () => {
